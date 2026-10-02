@@ -1,0 +1,354 @@
+name: CI
+
+# External actions are pinned to full commit SHAs to prevent supply-chain
+# attacks via tag reassignment. Run `gh api repos/OWNER/REPO/git/refs/tags/vN`
+# to look up the current SHA when upgrading.
+#
+# This plugin has NO optional extension. Unlike spora-plugin-typst, where
+# ext-typst is a PECL install with `continue-on-error` and the producer's tests
+# skip themselves when it is absent, the four extensions below are hard
+# requirements of fabeat/markdown-word and the whole suite needs them. So:
+# every job installs all four explicitly, nothing is `continue-on-error`, and
+# no job passes `--ignore-platform-req` — a runner that lost `gd` should fail
+# in the first second with "the extension is missing", not 200 lines into a
+# test with a message that says nothing about the environment.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # `MediaMimeRefinerInterface` is not in a tagged spora-core release yet —
+  # it ships with the spora-core PR that adds the refiner seam. composer.json
+  # therefore resolves spora-core through a `path` repository so the plugin can
+  # be developed and tested against that branch, with the version pinned in
+  # `options.versions` so the constraint is stable whichever branch is checked
+  # out. Once core tags the release carrying the seam, this entry is deleted and
+  # spora-core resolves from Packagist like every other plugin.
+  #
+  # `actions/checkout`'s `path:` is workspace-relative, so the core checkout
+  # lands *inside* this repo's workspace while the path repository is declared
+  # as `../spora-core` — a sibling, which is what local development has. Every
+  # job that runs `composer install` therefore symlinks the checkout to the
+  # sibling location first; without it all four of them fail with
+  # `Source path "../spora-core" is not found`.
+  SPORA_CORE_REF: feat/media-file-card-and-create-media
+
+jobs:
+  test:
+    name: Pest (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: ${{ matrix.php }}
+          # All four ext-* requirements, listed explicitly rather than
+          # inherited from the runner image: `zip` and `gd` are NOT part of
+          # setup-php's default extension set, and a job that depends on an
+          # image default is one image bump away from a confusing failure.
+          # pdo_sqlite is here because the Pest suite boots a real SQLite
+          # file (tests/Pest.php), also currently a runner default.
+          extensions: curl, dom, gd, mbstring, pdo_sqlite, zip
+          # PCOV is faster than Xdebug and ships pre-installed on the
+          # runner; we only need coverage on the PHP 8.4 job since
+          # the matrix builds share the same source.
+          coverage: pcov
+          tools: composer
+
+      - name: Assert the required extensions are loaded
+        # Cheap and loud. Without it a missing extension surfaces as a
+        # TypeError or a ZipArchive-not-found inside whichever test happens
+        # to touch it first.
+        run: |
+          php -r 'foreach (["zip", "dom", "mbstring", "gd"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "missing required extension: $e\n"); exit(1); } } echo "all required extensions loaded\n";'
+
+      - name: Checkout spora-core (path repository)
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: spora-ai/spora-core
+          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          path: spora-core
+
+      - name: Link spora-core to the sibling path the lock expects
+        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run Pest
+        # PHP 8.4 also produces the coverage report + JUnit XML so the
+        # SonarCloud scan job below has something to ingest: the Pest job
+        # writes clover.xml and junit.xml, which is what
+        # sonar-project.properties points at. PHP 8.5 runs the suite in
+        # plain mode — its purpose is to surface syntax / runtime diffs
+        # across PHP versions.
+        run: |
+          if [ "${{ matrix.php }}" = "8.4" ]; then
+            XDEBUG_MODE=coverage ./vendor/bin/pest --parallel --processes=auto --max-batch-size=50 \
+              --coverage-filter=src \
+              --coverage-clover=coverage/clover.xml \
+              --coverage-cobertura=coverage/cobertura.xml \
+              --coverage-html=coverage/html \
+              --log-junit=coverage/junit.xml
+          else
+            ./vendor/bin/pest
+          fi
+
+      - name: Upload coverage artifacts
+        # Only upload from the PHP 8.4 build — the 8.5 matrix sibling
+        # is identical source-wise and would race the upload step.
+        if: matrix.php == '8.4'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        with:
+          name: pest-coverage
+          path: coverage/
+          retention-days: 7
+
+  static-analysis:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: '8.4'
+          extensions: curl, dom, gd, mbstring, zip
+          coverage: none
+          tools: composer
+
+      # The ext-* entries are `require`d in composer.json, so without the
+      # four extensions above this install fails on a platform requirement
+      # rather than on anything the code did. Hence no
+      # `--ignore-platform-req` here (unlike typst's job).
+      - name: Checkout spora-core (path repository)
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: spora-ai/spora-core
+          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          path: spora-core
+
+      - name: Link spora-core to the sibling path the lock expects
+        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run PHPStan
+        run: ./vendor/bin/phpstan analyse --no-progress --memory-limit=512M
+
+  code-style:
+    name: php-cs-fixer (dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: '8.4'
+          extensions: curl, dom, gd, mbstring, zip
+          coverage: none
+          tools: composer
+
+      - name: Checkout spora-core (path repository)
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: spora-ai/spora-core
+          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          path: spora-core
+
+      - name: Link spora-core to the sibling path the lock expects
+        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
+
+      - name: Composer install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Check code style
+        # Same ruleset as Spora core's .php-cs-fixer.php so plugin style matches host.
+        run: ./vendor/bin/php-cs-fixer fix --dry-run --diff --no-interaction
+
+  # Boot the plugin against a fresh spora-core install to verify the
+  # plugin contract resolves cleanly: manifest parses, DI bindings
+  # wire up, and all three media-archive registrations hook in. This
+  # catches breakage in the plugin's public surface (WordPlugin::
+  # onContainerBuilding / skillPaths) without spinning up the full
+  # frontend stack — including the MediaMimeRefinerInterface guard,
+  # whose failure mode is otherwise a swallowed listener exception and
+  # a half-working plugin.
+  integration:
+    name: Plugin boots in spora-core skeleton
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Checkout spora-core
+        # Sibling clone — composer path repos reference it via
+        # absolute paths from the skeleton's `composer.json`.
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: spora-ai/spora-core
+          path: spora-core
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: '8.4'
+          extensions: curl, dom, gd, mbstring, pdo_sqlite, zip
+          coverage: none
+          tools: composer
+
+      - name: Bootstrap skeleton
+        run: |
+          # Throwaway composer project that requires spora-core + this
+          # plugin as path repos. Mirrors spora-local/composer.json so
+          # the verification reflects the real operator wiring. Uses
+          # absolute paths so the path repos resolve regardless of
+          # the step's working directory.
+          mkdir -p /tmp/skeleton && cd /tmp/skeleton
+          composer init --name=spora/test-skeleton --type=project --no-interaction --quiet
+          composer config minimum-stability dev
+          composer config prefer-stable true
+          composer config allow-plugins.pestphp/pest-plugin true
+          composer config allow-plugins.spora-ai/installer true
+          composer config allow-plugins.composer/installers true
+          composer config repositories.spora-core path "$GITHUB_WORKSPACE/spora-core"
+          composer config repositories.word path "$GITHUB_WORKSPACE"
+
+      # No platform-requirement skip here either: the four extensions are
+      # installed above, and a platform-requirement failure is exactly the
+      # signal this job exists to catch.
+      - name: Install skeleton + spora-core + plugin
+        working-directory: /tmp/skeleton
+        run: |
+          composer require --no-interaction \
+            spora-ai/spora-core:@dev \
+            spora-ai/installer:^1.5 \
+            "spora-ai/spora-plugin-word:*@dev" 2>&1 | tail -30
+
+      - name: Migrate + boot CLI to surface plugin-load failures
+        working-directory: /tmp/skeleton
+        env:
+          # Generate a fresh base64 secret per CI run — the container's
+          # SecurityKeyDefinitions rejects malformed keys at boot, so a
+          # placeholder string fails fast. Falls back to a per-run
+          # generated key when no repo secret is configured.
+          SPORA_SECRET_KEY: ${{ secrets.SPORA_SECRET_KEY }}
+        run: |
+          # Plugin boot failures (manifest errors, DI resolution
+          # errors, missing routes) surface as PHP fatals or
+          # stack-trace messages during `spora:install`. A clean
+          # migration is sufficient evidence the plugin loads.
+          mkdir -p storage
+          touch storage/database.sqlite
+          export SPORA_DB_DRIVER=sqlite
+          export SPORA_DB_DATABASE="$PWD/storage/database.sqlite"
+          # If SPORA_SECRET_KEY wasn't injected from a repo secret,
+          # fall back to a fresh base64 key generated via openssl.
+          if [ -z "${SPORA_SECRET_KEY:-}" ]; then
+            export SPORA_SECRET_KEY="$(openssl rand -base64 32 | tr -d '\n')"
+          fi
+
+          # The spora-core CLI entrypoint refuses to run without
+          # BASE_PATH defined (a real skeleton's bin/spora sets it).
+          # Use -d auto_prepend_file to inject a one-liner that
+          # defines the constant before the script loads.
+          cat > /tmp/_spora_bootstrap.php <<'PHP'
+          <?php
+          define('BASE_PATH', getenv('SPORA_SKELETON_BASE_PATH') ?: getcwd());
+          PHP
+          SPORA_BIN="vendor/spora-ai/spora-core/bin/spora"
+          SPORA_SKELETON_BASE_PATH="$PWD" php -d auto_prepend_file=/tmp/_spora_bootstrap.php "$SPORA_BIN" spora:install
+
+      - name: Verify plugin is discoverable
+        working-directory: /tmp/skeleton
+        run: |
+          # The composer installer (spora-ai/installer, type:spora-plugin)
+          # routes packages into plugins/<package-short-name>/ — i.e.
+          # `spora-plugin-word`, NOT `word`. The package short name is
+          # what PluginLoader scans, and `spora:install` having run
+          # without fatal errors above is sufficient evidence the
+          # manifest parsed, the entry-point class autoloaded, and
+          # PluginLoader booted the plugin.
+          test -d plugins/spora-plugin-word || (echo "Plugin NOT routed to plugins/spora-plugin-word/" && exit 1)
+          test -f plugins/spora-plugin-word/plugin.json || (echo "plugin.json missing" && exit 1)
+          test -f plugins/spora-plugin-word/composer.json || (echo "composer.json missing" && exit 1)
+          test -f plugins/spora-plugin-word/skills/word-documents/SKILL.md || (echo "skill SKILL.md missing" && exit 1)
+          echo "Plugin routed to plugins/spora-plugin-word/, manifest + skill in place."
+
+  sonarcloud:
+    name: SonarCloud scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    needs: test
+    steps:
+      - name: Checkout
+        # fetch-depth: 0 so SonarCloud can attribute issues via git
+        # blame; without it the "new code" computation falls back to
+        # the last commit and skews coverage / quality gate.
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
+        with:
+          php-version: '8.4'
+          # The scanner only needs Composer's dependency graph, but the
+          # ext-* entries in composer.json are hard `require`s, so the
+          # install below fails without them. Same four as everywhere.
+          extensions: curl, dom, gd, mbstring, zip
+          coverage: pcov
+          tools: composer
+
+      - name: Checkout spora-core (path repository)
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: spora-ai/spora-core
+          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          path: spora-core
+
+      - name: Link spora-core to the sibling path the lock expects
+        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
+
+      - name: Install
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Download coverage report
+        # The Pest job writes coverage/clover.xml + coverage/junit.xml
+        # as workflow artifacts; pull them back so the scanner can
+        # ingest them as part of its own run.
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: pest-coverage
+          path: coverage
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # v8.x of the SonarSource action exposes projectBaseDir as
+          # a dedicated input (sets -Dsonar.projectBaseDir internally);
+          # passing `--project-base-dir=...` via the args input makes
+          # the scanner CLI reject the flag.
+          projectBaseDir: ${{ github.workspace }}
