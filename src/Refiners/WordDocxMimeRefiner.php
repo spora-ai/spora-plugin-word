@@ -62,39 +62,47 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
     /**
      * Whether the bytes open as a zip archive carrying `word/document.xml`.
      *
-     * `ZipArchive::open()` needs a path, so the payload is staged through
-     * `tempnam()` and removed on the way out. Opened `RDONLY` — a refiner must
-     * never be able to rewrite the archive it is inspecting — and nothing is
-     * ever extracted, so no entry name from the untrusted archive ever reaches
-     * the filesystem as a path. The whole window, `open()` through
-     * `locateName()`, sits inside one scoped error handler: a corrupt central
-     * directory warns from `locateName()` too, and a warning reaching the
-     * kernel would violate this class's contract of emitting nothing.
+     * Both bounds are decided *before* anything reaches the filesystem.
+     *
+     * The size bound matters because this runs inside the upload allowlist
+     * gate — `MediaUploadController::store()` calls `sniffFromBytes()` on the
+     * full body before `checkMimeAllowed()` rejects it — so staging is on the
+     * path for every zip a user ever attaches, declined or not, and staging
+     * doubles peak `/tmp` per request. There is no application-level upload
+     * cap (only PHP's `upload_max_filesize`), so a large body would
+     * otherwise be written out in full only to be thrown away a moment
+     * later. A chat attachment has no reason to approach the
+     * reverse-direction ceiling this plugin already set.
+     *
+     * The entry bound matters because `locateName()` parses the whole central
+     * directory, so a zip bomb's real cost lands in memory here. The upstream
+     * reader this mirrors refuses `numFiles > maxEntries` right after
+     * opening; matching that is what keeps the refiner from being the weaker
+     * of the two defences on the same bytes.
+     *
+     * Opened `RDONLY` — a refiner must never be able to rewrite the archive
+     * it is inspecting — and nothing is ever extracted, so no entry name from
+     * the untrusted archive ever reaches the filesystem as a path.
      */
     private function isWordPackage(string $bytes): bool
     {
-        // Both bounds are decided *before* anything reaches the filesystem.
-        //
-        // The size bound matters because this runs inside the upload
-        // allowlist gate — `MediaUploadController::store()` calls
-        // `sniffFromBytes()` on the full body before `checkMimeAllowed()`
-        // rejects it — so staging is on the path for every zip a user ever
-        // attaches, declined or not, and staging doubles peak `/tmp` per
-        // request. There is no application-level upload cap (only PHP's
-        // `upload_max_filesize`), so a large body would otherwise be written
-        // out in full only to be thrown away a moment later. A chat
-        // attachment has no reason to approach the reverse-direction ceiling
-        // this plugin already set.
-        //
-        // The entry bound matters because `locateName()` parses the whole
-        // central directory, so a zip bomb's real cost lands in memory here.
-        // The upstream reader this mirrors refuses `numFiles > maxEntries`
-        // right after opening; matching that is what keeps the refiner from
-        // being the weaker of the two defences on the same bytes.
         if ($bytes === '' || strlen($bytes) > WordConversion::MAX_PART_BYTES) {
             return false;
         }
 
+        return $this->withStagedArchive($bytes, $this->opensAsWordArchive(...));
+    }
+
+    /**
+     * @param callable(string): bool $inspect
+     */
+    private function withStagedArchive(string $bytes, callable $inspect): bool
+    {
+        // `ZipArchive::open()` takes a path, so the payload has to exist on
+        // disk to be opened at all — which is the only reason this method
+        // exists. It is separate from {@see self::isWordPackage()} so the
+        // decision reads as a decision instead of as bail-out branches
+        // interleaved with temp-file bookkeeping.
         $staged = tempnam(sys_get_temp_dir(), 'spora-docx-refine-');
         if ($staged === false) {
             return false;
@@ -105,47 +113,73 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
                 return false;
             }
 
-            // Scoped to `E_WARNING`, and the displaced handler is kept so a
-            // diagnostic from anywhere else in the window still reaches the
-            // kernel rather than being swallowed. `WordConversion` holds the
-            // same rule for the same reason.
-            $previous = set_error_handler(
-                static function (int $errno) use (&$previous): bool {
-                    if ($errno === E_WARNING) {
-                        return true;
-                    }
-
-                    return $previous !== null && $previous(...func_get_args());
-                },
-                E_WARNING,
-            );
-
-            try {
-                $archive = new ZipArchive();
-                $opened  = $archive->open($staged, ZipArchive::RDONLY);
-            } finally {
-                restore_error_handler();
+            return $this->mutingArchiveWarnings(static fn(): bool => $inspect($staged));
+        } finally {
+            if (is_file($staged)) {
+                @unlink($staged);
             }
+        }
+    }
 
-            if ($opened !== true) {
-                return false;
-            }
+    /**
+     * The scoped handler wraps `open()` and `locateName()` together rather
+     * than each on its own: a corrupt central directory warns from the
+     * latter, and this class's contract is that it emits nothing.
+     */
+    private function opensAsWordArchive(string $path): bool
+    {
+        $archive = new ZipArchive();
 
-            try {
-                if ($archive->numFiles > WordConversion::MAX_ARCHIVE_ENTRIES) {
-                    return false;
+        // The `try` starts only once the archive is open: `ZipArchive::close()`
+        // on a handle that never opened throws a ValueError, which would turn
+        // "this is not a zip" — the single most common answer here — into an
+        // exception escaping the refiner.
+        if ($archive->open($path, ZipArchive::RDONLY) !== true) {
+            return false;
+        }
+
+        try {
+            return $archive->numFiles <= WordConversion::MAX_ARCHIVE_ENTRIES
+                && $archive->locateName(self::DOCUMENT_PART) !== false;
+        } finally {
+            $archive->close();
+        }
+    }
+
+    /**
+     * Swallow `E_WARNING` for the duration of `$callback` and pass anything
+     * else to the handler that was displaced.
+     *
+     * The mask is `E_WARNING` rather than `E_ALL` on purpose: a blanket
+     * handler would swallow an unrelated diagnostic raised in the same
+     * window, and `return false` is not the way to delegate either — that
+     * restores PHP's *built-in* handler and prints raw text instead of
+     * reaching Spora's `Kernel::configureErrorHandling()`.
+     * {@see WordConversion} holds the same rule
+     * for the same reason.
+     *
+     * @template T
+     *
+     * @param  callable(): T $callback
+     * @return T
+     */
+    private function mutingArchiveWarnings(callable $callback): mixed
+    {
+        $previous = set_error_handler(
+            static function (int $errno) use (&$previous): bool {
+                if ($errno === E_WARNING) {
+                    return true;
                 }
 
-                return $archive->locateName(self::DOCUMENT_PART) !== false;
-            } finally {
-                $archive->close();
-            }
+                return $previous !== null && $previous(...func_get_args());
+            },
+            E_WARNING,
+        );
+
+        try {
+            return $callback();
         } finally {
-            // The rename into /tmp already happened; this only cleans up when
-            // an earlier step bailed out.
-            if (is_file($staged)) {
-                unlink($staged);
-            }
+            restore_error_handler();
         }
     }
 }
