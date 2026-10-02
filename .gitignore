@@ -1,0 +1,11 @@
+/vendor/
+/.phpunit.cache/
+/.phpunit.result.cache
+/.php-cs-fixer.cache
+/.worktrees/
+
+/tmp/
+/storage/
+
+/coverage/
+coverage.xml
