@@ -81,7 +81,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
@@ -142,7 +142,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
@@ -173,7 +173,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
@@ -324,7 +324,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
