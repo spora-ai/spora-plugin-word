@@ -1,0 +1,69 @@
+{
+    "name": "spora-ai/spora-plugin-word",
+    "description": "Markdown <-> Word (DOCX) conversion for Spora agents — a media-derivatives producer, a media converter, and a bundled skill.",
+    "type": "spora-plugin",
+    "license": "MIT",
+    "keywords": ["spora", "plugin", "word", "docx", "markdown", "media-derivatives", "media-converter", "document-generation"],
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../spora-core",
+            "options": {
+                "symlink": true,
+                "versions": {
+                    "spora-ai/spora-core": "0.30.0"
+                }
+            }
+        }
+    ],
+    "require": {
+        "php": "^8.4.1",
+        "ext-zip": "*",
+        "ext-dom": "*",
+        "ext-mbstring": "*",
+        "ext-gd": "*",
+        "spora-ai/spora-core": ">=0.30.0 <2.0.0",
+        "fabeat/markdown-word": "^0.1.0"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.94",
+        "mockery/mockery": "^1.6",
+        "pestphp/pest": "^5.0",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-mockery": "^2.0"
+    },
+    "suggest": {
+        "spora-ai/spora-plugin-media-archive": "Browse, filter, and download the DOCX files this plugin renders."
+    },
+    "autoload": {
+        "psr-4": {
+            "Spora\\Plugins\\Word\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Spora\\Plugins\\Word\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:parallel": "pest --parallel --processes=auto --max-batch-size=50",
+        "test:coverage": "XDEBUG_MODE=coverage pest --parallel --processes=auto --max-batch-size=50 --coverage-filter=src --coverage-clover=coverage/clover.xml --coverage-cobertura=coverage/cobertura.xml --coverage-html=coverage/html --coverage-text=coverage/summary.txt",
+        "analyse": "phpstan analyse --no-progress --memory-limit=512M",
+        "lint": "php-cs-fixer fix --dry-run --diff --no-interaction",
+        "format": "php-cs-fixer fix --no-interaction"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "spora-ai/installer": true
+        },
+        "preferred-install": {
+            "spora-ai/spora-core": "source"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

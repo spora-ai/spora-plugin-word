@@ -81,7 +81,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
@@ -142,7 +142,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
@@ -173,7 +173,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects
@@ -231,7 +231,14 @@ jobs:
           composer config allow-plugins.pestphp/pest-plugin true
           composer config allow-plugins.spora-ai/installer true
           composer config allow-plugins.composer/installers true
-          composer config repositories.spora-core path "$GITHUB_WORKSPACE/spora-core"
+          # The core path repo pins its version in `options.versions`, which
+          # the plain `composer config repositories.<name> path <url>` form
+          # cannot express. Without the pin composer reads an untagged
+          # checkout as `dev-main`, and the plugin's `>=0.30.0` floor — which
+          # is real, because it hard-requires MediaMimeRefinerInterface —
+          # rejects it. composer.json's own `repositories` entry pins the same
+          # way for local development; both go away once core tags the release.
+          composer config repositories.spora-core '{"type":"path","url":"'"$GITHUB_WORKSPACE"'/spora-core","options":{"symlink":true,"versions":{"spora-ai/spora-core":"0.30.0"}}}'
           composer config repositories.word path "$GITHUB_WORKSPACE"
 
       # No platform-requirement skip here either: the four extensions are
@@ -324,7 +331,7 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: spora-ai/spora-core
-          ref: ${{{{ env.SPORA_CORE_REF }}}}
+          ref: ${{ env.SPORA_CORE_REF }}
           path: spora-core
 
       - name: Link spora-core to the sibling path the lock expects

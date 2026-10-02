@@ -1,0 +1,19 @@
+includes:
+    - vendor/phpstan/phpstan-mockery/extension.neon
+
+parameters:
+    paths:
+        - src
+        - tests
+    level: 5
+    excludePaths:
+        - vendor
+    bootstrapFiles:
+        - vendor/autoload.php
+        - tests/bootstrap.php
+    # No `ignoreErrors` here. Typst carries three Pest-workaround patterns
+    # (`TestCall::$this` property access, `Expectation::$this->not`, and the
+    # `markTestSkipped` proxy), but they are only needed by suites that use
+    # those forms. PHPStan treats an `ignoreErrors` pattern that never matches
+    # as an error by itself, so an unconditional copy fails the moment the
+    # suite outgrows one of them. Add a pattern here the day a test needs it.
