@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 use MarkdownWord\Exception\UnreadableDocument;
-use MarkdownWord\MarkdownToWord;
 use Spora\Plugins\Word\Exceptions\WordDocumentException;
 use Spora\Plugins\Word\Services\WordConversion;
 use Spora\Plugins\Word\Tests\Support\DocxFixtures;
+use Spora\Plugins\Word\Tests\Support\ErrorHandlerStack;
 use Spora\Plugins\Word\Tests\Support\ErrorRecorder;
 
 /**
@@ -161,27 +161,33 @@ it('lets a deprecation from outside phpoffice/phpword through to the handler bel
 
 it('pops its error handler once the render is done', function () {
     $conversion = new WordConversion();
-    $recorder   = new ErrorRecorder();
-    set_error_handler($recorder, E_ALL);
+    $sentinel   = new ErrorRecorder();
+    set_error_handler($sentinel, E_ALL);
 
     try {
         $conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN);
-        // Deliberately unmediated. If the suppressor's frame were still
-        // installed it would sit above this recorder and swallow these too —
-        // the leak that would silence PHPWord's notices for the rest of the
-        // worker's life.
-        (new MarkdownToWord())->toDocx(DocxFixtures::SAMPLE_MARKDOWN);
+
+        // Stack depth, not whether a notice arrived. The earlier version of
+        // this test counted PHPWord's own deprecations and asserted they
+        // reached the recorder — which only works on PHP 8.5, where
+        // `Style::getStyle()` passes null to an array offset. On 8.4 the
+        // library is silent, the recorder sees nothing, and a correct
+        // suppressor reads as a leak. The leak this guards against has
+        // nothing to do with which PHP raises what: it is a frame left on
+        // the stack, so that is what is measured.
+        expect(ErrorHandlerStack::leakedFramesAbove($sentinel))->toBe(0);
     } finally {
         restore_error_handler();
     }
-
-    expect($recorder->phpwordNoticeCount())->toBeGreaterThan(0);
 });
 
 it('pops its error handler when the conversion throws', function () {
+    // The `finally` in `withoutUpstreamPhpWordNotices()` has to fire on the
+    // exception path too, and that is the path a plain happy-path render
+    // never takes.
     $conversion = new WordConversion();
-    $recorder   = new ErrorRecorder();
-    set_error_handler($recorder, E_ALL);
+    $sentinel   = new ErrorRecorder();
+    set_error_handler($sentinel, E_ALL);
 
     try {
         try {
@@ -190,10 +196,8 @@ it('pops its error handler when the conversion throws', function () {
             // The point is the handler stack afterwards, not the throw.
         }
 
-        (new MarkdownToWord())->toDocx(DocxFixtures::SAMPLE_MARKDOWN);
+        expect(ErrorHandlerStack::leakedFramesAbove($sentinel))->toBe(0);
     } finally {
         restore_error_handler();
     }
-
-    expect($recorder->phpwordNoticeCount())->toBeGreaterThan(0);
 });
