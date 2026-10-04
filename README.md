@@ -271,8 +271,19 @@ unlike the Typst plugin, which skips `ext-typst`, the whole suite here depends o
 them, and a silently missing `gd` would fail deep inside a test with a message
 that says nothing about the environment.
 
-The SonarCloud project `spora-ai_spora-plugin-word` **must exist before the first
-PR**, or the `sonarcloud` job fails on an unknown project key.
+The SonarCloud project this repo analyses into is
+`spora-ai_spora-plugin-word`; SonarCloud provisions it from the first CI
+analysis, so there is nothing to create by hand. What *does* have to stay off
+is SonarCloud's **Automatic analysis** (autoscan) for this repository. Autoscan
+provisions a project of its own — its key is this one with a `2` appended, and
+its name is the same `spora-plugin-word` — analyses the clone with
+`sonar.sources=.` instead of `sonar-project.properties`, and answers the same
+`?pullRequest=2` links. The result is two dashboards for one PR that disagree:
+the CI one carries the coverage, the test execution and the quality gate,
+while the autoscan one reports findings nobody acts on because it treats the
+test suite as production code. If a `…2` twin appears in the org's project
+list, switch autoscan off for the repo and delete the twin; the header of
+`sonar-project.properties` says the same thing next to the key itself.
 
 ## Publishing
 
