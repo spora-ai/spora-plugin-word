@@ -15,24 +15,22 @@ use Spora\Plugins\Word\Exceptions\WordDocumentException;
 /**
  * The single place both conversion directions go through.
  *
- * Three concerns live here rather than in the producer and the converter,
- * because each is only correct when both directions share one copy: the
- * deprecation suppressor has to be paired exactly once per render (two
- * independent copies could interleave `set_error_handler` /
- * `restore_error_handler` and pop each other's frame), the size caps are
- * the plugin's answer to a library that applies no forward-direction limit
- * of its own, and the exception mapping is what lets callers stop knowing
- * PHPWord's exception tree.
+ * Three concerns live here rather than in each producer, because each is only
+ * correct when both directions share one copy: the deprecation suppressor has
+ * to be paired exactly once per render (two independent copies could
+ * interleave `set_error_handler` / `restore_error_handler` and pop each
+ * other's frame), the size caps are the plugin's answer to a library that
+ * applies no forward-direction limit of its own, and the exception mapping is
+ * what lets callers stop knowing PHPWord's exception tree.
  */
 final class WordConversion
 {
     /**
      * The one place this plugin names the format it both emits and consumes.
-     * The producer stamps it on the derivative it mints, the converter claims
-     * it as the MIME it handles, and the refiner promotes a coarse
-     * `application/zip` verdict to it — a single literal so the three cannot
-     * drift apart and leave a DOCX that converts under one name and is served
-     * under another.
+     * Both producers stamp it on the derivative they mint or claim it as the
+     * MIME they read, and the refiner promotes a coarse `application/zip`
+     * verdict to it — a single literal so the three cannot drift apart and
+     * leave a DOCX that converts under one name and is served under another.
      */
     public const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -123,10 +121,10 @@ final class WordConversion
      * Read a `.docx` back into GitHub-Flavored Markdown.
      *
      * The upstream `UnreadableDocument` / `MalformedDocument` are deliberately
-     * not translated into a blank string: the ingest pipeline's
-     * `runConversionPipeline()` catches `Throwable`, logs it and leaves
-     * `markdown_content` NULL, which is the graceful degradation we want —
-     * a hostile document cannot fail an upload, and the chat falls back to the
+     * not translated into a blank string: {@see \Spora\Plugins\Word\Producers\DocxToMarkdownProducer}
+     * lets them surface as a {@see WordDocumentException} and leaves the
+     * decision to its caller, which is the graceful degradation we want — a
+     * hostile document cannot fail an upload, and the chat falls back to the
      * metadata block.
      *
      * `mediaDirectory` stays null. A `.docx` read into chat should not leave

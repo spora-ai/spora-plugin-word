@@ -101,9 +101,9 @@ Two mistakes to notice, because they are the common ones:
 **User** attaches `northwind-contract.docx` and asks: "what's the renewal date
 and who's the counterparty?"
 
-The archive's converter already turned the upload into Markdown during
-ingestion, and that text is inlined into the model's context. **There is no
-tool call in this exchange at all** — not `get_media`, not `get_source`.
+The archive extracted the upload into a Markdown derivative, and that text is
+inlined into the model's context. **There is no tool call in this exchange at
+all** — not `get_media`, not `get_source`.
 
 ```text
 user: [attachment: northwind-contract.docx]

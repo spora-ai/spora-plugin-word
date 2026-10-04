@@ -7,11 +7,11 @@ namespace Spora\Plugins\Word;
 use Spora\Events\ContainerBuildingEvent;
 use Spora\Plugins\AbstractPlugin;
 use Spora\Plugins\Exceptions\PluginLoadFailedException;
-use Spora\Plugins\Word\Converters\DocxToMarkdownConverter;
+use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
 use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
 use Spora\Plugins\Word\Refiners\WordDocxMimeRefiner;
 use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Services\MediaArchive\MediaConverterDiscovery;
+use Spora\Plugins\Word\Services\WordSourceBytes;
 use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerInterface;
@@ -29,12 +29,16 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * Architectural invariants:
  *
- *   - **The three registrations are three different seams.** The producer
- *     emits a binary derivative; the converter's output is the only one of
- *     the three that reaches `markdown_content` and therefore the chat; the
- *     refiner runs before the upload allowlist so a DOCX on an old libmagic
- *     is typed correctly before anything rejects it. Registering only one of
- *     the three leaves a silently half-working plugin rather than an error.
+ *   - **Two of the three registrations share a seam, and the third does
+ *     not.** Both producers mint derivatives — the extract half the chat
+ *     reads, the render half the user downloads — so they are registered with
+ *     the same discovery call and an `md` extract is a legal `docx` parent
+ *     because of what they declare, not because of any extra wiring. The
+ *     refiner is the separate seam: it runs *before* the upload allowlist so
+ *     a DOCX on an old libmagic is typed correctly before anything rejects
+ *     it. Registering the producers without the refiner, or the refiner
+ *     without the producers, leaves a silently half-working plugin rather
+ *     than an error.
  *
  *   - **Discovery calls run on every boot by design.** The registries are
  *     in-process statics that reset between tests, and `add()` no-ops on an
@@ -78,13 +82,14 @@ final class WordPlugin extends AbstractPlugin implements EventSubscriberInterfac
 
         $event->builder()->addDefinitions([
             WordConversion::class         => \DI\autowire(),
+            WordSourceBytes::class        => \DI\autowire(),
             MarkdownToDocxProducer::class => \DI\autowire(),
-            DocxToMarkdownConverter::class => \DI\autowire(),
+            DocxToMarkdownProducer::class => \DI\autowire(),
             WordDocxMimeRefiner::class    => \DI\autowire(),
         ]);
 
         MediaDerivativeProducerDiscovery::add(MarkdownToDocxProducer::class);
-        MediaConverterDiscovery::add(DocxToMarkdownConverter::class);
+        MediaDerivativeProducerDiscovery::add(DocxToMarkdownProducer::class);
         MediaMimeRefinerDiscovery::add(WordDocxMimeRefiner::class);
     }
 

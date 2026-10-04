@@ -11,11 +11,13 @@ allowed-tools: Spora\Tools\MediaTool
 
 # Word documents
 
-This plugin ships **no tool of its own**. It registers a DOCX *producer*
-(Markdown → `.docx`) and a DOCX *converter* (`.docx` → Markdown) with the Media
-Archive, so a Word document becomes a format the existing `media` tool can write
-and read. Producing one costs **two `media` calls**. Reading one the user attached
-costs **none at all** — the text is already in your context.
+This plugin ships **no tool of its own**. It registers two DOCX *producers* with
+the Media Archive — one that renders Markdown into a `.docx` derivative, one that
+extracts a `.docx` into an `md` derivative — so a Word document becomes a format
+the existing `media` tool can write and read, and an `md` extract is itself a
+legal parent for a `.docx` render. Producing one costs **two `media` calls**.
+Reading one the user attached costs **none at all** — the extracted text is
+already in your context.
 
 Worked end-to-end examples: `skill(action: "read", name: "word-documents", filename: "examples.md")`.
 
@@ -110,11 +112,16 @@ which is exactly why a Word document is two calls and nothing else.
 `application/vnd.openxmlformats-officedocument.wordprocessingml.document` MIME
 type.
 
-The producer accepts Markdown parents only — the `text/markdown` MIME or the
-`md` / `markdown` extension, either of which is enough. A `docx` derivative's
-parent is therefore always a Markdown asset, never a PDF or an image, and a
-DOCX is never itself converted into another DOCX. (Reading a `.docx` back is
-the converter's job, not a derivative.)
+The render producer accepts Markdown parents only — the `text/markdown` MIME or
+the `md` / `markdown` extension, either of which is enough. A `docx` derivative's
+parent is therefore always a Markdown asset, never a PDF or an image, and a DOCX
+is never itself rendered into another DOCX. (Reading a `.docx` back is the
+*extract* producer's job, at `format: "md"`.)
+
+`md` is a format identifier this plugin registers too, in the other direction.
+Asking for `format: "md"` on a DOCX parent produces the extracted Markdown as a
+derivative; asking on a Markdown parent produces a file, and fails. The two are
+distinguished by the parent's type, not by the format name.
 
 **There is no PDF output, and asking for one will fail.** `format: "pdf"`
 returns "No derivative producer supports format pdf" unless some *other*
@@ -218,13 +225,12 @@ user can approve the right thing in the right order.
 
 ## Reading a document back
 
-**Reading a `.docx` the user attached needs no tool call.** The registered
-converter turns the upload into Markdown during ingestion, and that extracted
-text is inlined into your context automatically. So "what does this contract
-say", "summarise the attached document", and "what's the renewal date" are
-answering questions about text you can already see — answer them. Reaching for
-`get_source` on an attachment you have just been given is a wasted,
-approval-gated call.
+**Reading a `.docx` the user attached needs no tool call.** The archive extracts
+the upload into an `md` derivative, and that extracted text is inlined into your
+context automatically. So "what does this contract say", "summarise the attached
+document", and "what's the renewal date" are answering questions about text you
+can already see — answer them. Reaching for `get_source` on an attachment you have
+just been given is a wasted, approval-gated call.
 
 The archive itself is reachable when you need more:
 
@@ -234,10 +240,10 @@ The archive itself is reachable when you need more:
 { "action": "search", "mime_type": "application/" } // every document in scope
 ```
 
-`get_source` on a binary mime returns the extracted `markdown_content`
-(truncated to 8 KB), which is the shape you can actually iterate on — not the
-DOCX bytes. It is off by default and always approval-gated; do not call it when
-the text is already in front of you.
+`get_source` on a binary mime returns the extracted Markdown from that `md`
+derivative (truncated to 8 KB), which is the shape you can actually iterate on —
+not the DOCX bytes. It is off by default and always approval-gated; do not call
+it when the text is already in front of you.
 
 A corrupt or hostile `.docx` degrades quietly: the upload still succeeds, the
 extraction is skipped, and all you get is a metadata block. Say the text could

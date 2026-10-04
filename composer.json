@@ -1,9 +1,9 @@
 {
     "name": "spora-ai/spora-plugin-word",
-    "description": "Markdown <-> Word (DOCX) conversion for Spora agents — a media-derivatives producer, a media converter, and a bundled skill.",
+    "description": "Markdown <-> Word (DOCX) conversion for Spora agents — two media-derivatives producers, a MIME refiner, and a bundled skill.",
     "type": "spora-plugin",
     "license": "MIT",
-    "keywords": ["spora", "plugin", "word", "docx", "markdown", "media-derivatives", "media-converter", "document-generation"],
+    "keywords": ["spora", "plugin", "word", "docx", "markdown", "media-derivatives", "document-generation"],
     "repositories": [
         {
             "type": "path",

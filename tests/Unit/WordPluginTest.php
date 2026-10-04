@@ -9,13 +9,14 @@ use Spora\Core\SecurityManagerInterface;
 use Spora\Events\ContainerBuildingEvent;
 use Spora\Plugins\AbstractPlugin;
 use Spora\Plugins\Exceptions\PluginLoadFailedException;
-use Spora\Plugins\Word\Converters\DocxToMarkdownConverter;
+use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
 use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
 use Spora\Plugins\Word\Refiners\WordDocxMimeRefiner;
 use Spora\Plugins\Word\Services\WordConversion;
+use Spora\Plugins\Word\Services\WordSourceBytes;
 use Spora\Plugins\Word\WordPlugin;
-use Spora\Services\MediaArchive\MediaConverterDiscovery;
 use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
+use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -37,24 +38,52 @@ it('subscribes to the container-building event with a public listener', function
 });
 
 /**
- * The three registrations are three different seams, and registering only
- * one of them leaves a silently half-working plugin rather than an error:
- * the producer emits a binary derivative, the converter's output is the
- * only one that reaches `markdown_content` and therefore the chat, and the
- * refiner runs *before* the upload allowlist so a DOCX is correctly typed
- * before anything can reject it.
+ * The three registrations, and the shape that replaced the converter: both
+ * halves of the round trip are producers now, so `md` extraction and `docx`
+ * rendering share one discovery call and the refiner is the only other seam.
+ * Registering the producers without the refiner, or the refiner without the
+ * producers, leaves a silently half-working plugin rather than an error.
  */
-it('registers all three media-archive contributions on boot', function () {
+it('registers both producers and the refiner on boot', function () {
     (new WordPlugin())->onContainerBuilding(new ContainerBuildingEvent(new ContainerBuilder()));
 
-    expect(MediaDerivativeProducerDiscovery::all())->toBe([MarkdownToDocxProducer::class])
-        ->and(MediaConverterDiscovery::all())->toBe([DocxToMarkdownConverter::class])
+    expect(MediaDerivativeProducerDiscovery::all())
+        ->toBe([MarkdownToDocxProducer::class, DocxToMarkdownProducer::class])
         ->and(MediaMimeRefinerDiscovery::all())->toBe([WordDocxMimeRefiner::class]);
 });
 
-it('binds its four classes so the container can autowire them', function () {
+/**
+ * The registration half, pinned at the source level rather than through
+ * `MediaConverterDiscovery::all()`.
+ *
+ * `class_exists()` would be the obvious check and it is the wrong one: the
+ * plugin's classmap still carries a deleted path until `composer
+ * dump-autoload` runs, so it raises a file-include warning instead of
+ * answering. Asking the discovery registry for its list would work, but that
+ * class is exactly what the core this PR merges after deletes — a test that
+ * fatals on the host it is written for is worse than no test. Reading the
+ * listener's own body is version-independent, and it is the same approach the
+ * refiner-guard test below takes.
+ */
+it('never reaches for the converter discovery this plugin no longer uses', function () {
+    $method = new ReflectionMethod(WordPlugin::class, 'onContainerBuilding');
+    $source = implode("\n", array_slice(
+        explode("\n", (string) file_get_contents((string) $method->getFileName())),
+        $method->getStartLine() - 1,
+        $method->getEndLine() - $method->getStartLine() + 1,
+    ));
+
+    expect(interface_exists(MediaDerivativeProducerInterface::class))->toBeTrue()
+        ->and($source)->toContain('MediaDerivativeProducerDiscovery::add(')
+        // Both directions on the one seam the plugin still declares, and no
+        // mention of the `bytes -> string` contract at all.
+        ->and(substr_count($source, 'MediaDerivativeProducerDiscovery::add('))->toBe(2)
+        ->and($source)->not->toContain('MediaConverter');
+});
+
+it('binds its five classes so the container can autowire them', function () {
     $builder = new ContainerBuilder();
-    // The two definitions core contributes around the producer's
+    // The two definitions core contributes around the producers'
     // `LocalAssetStore` collaborator. They are supplied here rather than
     // built in, so a failure below is the plugin's binding and not the
     // harness's.
@@ -69,8 +98,9 @@ it('binds its four classes so the container can autowire them', function () {
     $container = $builder->build();
 
     expect($container->get(WordConversion::class))->toBeInstanceOf(WordConversion::class)
+        ->and($container->get(WordSourceBytes::class))->toBeInstanceOf(WordSourceBytes::class)
         ->and($container->get(MarkdownToDocxProducer::class))->toBeInstanceOf(MarkdownToDocxProducer::class)
-        ->and($container->get(DocxToMarkdownConverter::class))->toBeInstanceOf(DocxToMarkdownConverter::class)
+        ->and($container->get(DocxToMarkdownProducer::class))->toBeInstanceOf(DocxToMarkdownProducer::class)
         ->and($container->get(WordDocxMimeRefiner::class))->toBeInstanceOf(WordDocxMimeRefiner::class);
 });
 
@@ -85,8 +115,8 @@ it('is idempotent across repeated boots', function () {
     $plugin->onContainerBuilding($event);
     $plugin->onContainerBuilding($event);
 
-    expect(MediaDerivativeProducerDiscovery::all())->toBe([MarkdownToDocxProducer::class])
-        ->and(MediaConverterDiscovery::all())->toBe([DocxToMarkdownConverter::class])
+    expect(MediaDerivativeProducerDiscovery::all())
+        ->toBe([MarkdownToDocxProducer::class, DocxToMarkdownProducer::class])
         ->and(MediaMimeRefinerDiscovery::all())->toBe([WordDocxMimeRefiner::class]);
 });
 

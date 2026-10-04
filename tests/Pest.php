@@ -11,10 +11,10 @@ declare(strict_types=1);
 | `uses(...)` block that installs the full core migration set into a
 | per-process SQLite file and rolls back each test in afterEach.
 |
-| afterEach resets **all three** discovery registries. They are in-process
+| afterEach resets **both** discovery registries. They are in-process
 | statics, and Pest's parallel workers do not share memory — but serial
 | runs do, so a leaked registration from one test would silently change
-| which converter/producer/refiner the next test resolves.
+| which producer/refiner the next test resolves.
 |
 */
 
@@ -24,7 +24,6 @@ use Mockery as M;
 use Spora\Auth\AuthService;
 use Spora\Core\Database;
 use Spora\Core\DatabaseSchemaInstaller;
-use Spora\Services\MediaArchive\MediaConverterDiscovery;
 use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 
@@ -85,7 +84,6 @@ uses()
         Database::resetBootState();
         clearSession();
         MediaDerivativeProducerDiscovery::reset();
-        MediaConverterDiscovery::reset();
         MediaMimeRefinerDiscovery::reset();
         M::close();
     })

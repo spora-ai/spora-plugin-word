@@ -2,7 +2,7 @@
 
 Markdown ⇄ Microsoft Word (`.docx`) for Spora agents. Backed by
 [`fabeat/markdown-word`](https://github.com/fabeat/markdown-word) and the
-media-archive producer / converter / refiner registries in `spora-core`.
+media-archive producer / refiner registries in `spora-core`.
 
 The plugin ships **no LLM tool, no routes and no admin app**. It contributes
 three registrations to core's Media Archive and one skill, so the existing
@@ -11,8 +11,8 @@ three registrations to core's Media Archive and one skill, so the existing
 - **Write** — `media(action: "create_media")` stores the Markdown, then
   `media(action: "create_derivative", format: "docx")` renders it to a Word
   document the user downloads.
-- **Read** — a `.docx` uploaded to a chat is converted to Markdown during
-  ingestion and inlined into the agent's context. No tool call involved.
+- **Read** — a `.docx` uploaded to a chat is extracted into a `md` derivative,
+  and that text is inlined into the agent's context. No tool call involved.
 
 ## Requires four PHP extensions
 
@@ -86,8 +86,8 @@ a silently half-working plugin.
 
 - 1 skill (`word-documents`) — the two-call chain, the five documented
   round-trip losses, the image rules, the approval and idempotency rules.
-- 3 media-archive registrations: a derivative producer, a converter, a MIME
-  refiner (table below).
+- 3 media-archive registrations: two derivative producers and a MIME refiner
+  (table below).
 - 3 exception classes, mirroring the Typst plugin's shape.
 - No tools, no routes, no admin app, **no frontend package** — the download card
   that renders a `.docx` in chat is core's `MediaEmbed::fileCard()`, so there is
@@ -95,14 +95,16 @@ a silently half-working plugin.
 
 ## The three registrations
 
-`WordPlugin::onContainerBuilding()` calls `add()` on three separate registries.
-They are three *different* seams, and registering only some of them leaves a
-plugin that half-works rather than one that errors.
+`WordPlugin::onContainerBuilding()` calls `add()` on two separate registries.
+Both producers share one seam — the round trip is two directions of the same
+contract, so an `md` extract is a legal parent for a `docx` render — and the
+refiner is the other. Registering only some of them leaves a plugin that
+half-works rather than one that errors.
 
 | Interface | Class | What it does |
 | --- | --- | --- |
 | `MediaDerivativeProducerInterface` | `Producers\MarkdownToDocxProducer` | Markdown parent + `format: "docx"` → DOCX bytes as a new `media_assets` row. `pluginSlug()` = `spora-plugin-word`, `operationName()` = `word.render` — both are part of the idempotency natural key. |
-| `MediaConverterInterface` | `Converters\DocxToMarkdownConverter` | DOCX bytes → GFM Markdown. The only one of the three whose output reaches `media_assets.markdown_content` and therefore the chat. Registers the DOCX MIME and the `docx` extension, which is what adds `.docx` to the upload allowlist. |
+| `MediaDerivativeProducerInterface` | `Producers\DocxToMarkdownProducer` | DOCX parent + `format: "md"` → GFM Markdown as a new `media_assets` row. `operationName()` = `word.extract`, distinct from the render half so the two rows never collapse onto one key. This is the half the chat reads. **Its declared source formats are also what puts `.docx` on the upload allowlist** — `MediaAllowedTypesService` unions every registered producer's source MIME, and nothing else in this plugin contributes an upload type. |
 | `MediaMimeRefinerInterface` | `Refiners\WordDocxMimeRefiner` | Upgrades a coarse `application/zip` sniff to the DOCX MIME, but only when the archive actually contains `word/document.xml` — so xlsx / pptx / epub are not mislabelled. Runs before the upload allowlist check. |
 
 The refiner exists for a concrete reason: `MimeSniffer` feeds 4096 bytes to
@@ -142,18 +144,18 @@ filename and the `href` are the entire contract.
 
 ## Reading a `.docx` back
 
-No tool call. The registered converter runs during ingestion, populates
-`media_assets.markdown_content`, and `MessageHistoryBuilder` inlines that text
-into the agent's context. "What does this contract say" is answered from text
-the model can already see.
+No tool call. The archive extracts a `.docx` into a `md` derivative — a real
+`media_assets` row, reachable and re-derivable like any other — and the chat
+inlines its text into the agent's context. "What does this contract say" is
+answered from text the model can already see.
 
 Behind the scenes the reverse direction is tightened for a chat attachment
 rather than a file server: `maxPartBytes` is lowered from the library's 256 MiB
 to 64 MiB, `mediaDirectory` stays `null` so no images are ever written to disk,
 and the upstream zip-bomb / style-loop caps (`maxEntries` 4096,
 `maxStyleDepth` 32) are kept. A corrupt or hostile `.docx` does not fail the
-upload — the conversion is caught, logged at warning, and the chat degrades to
-the asset's metadata block.
+upload — the extraction failure is caught, logged at warning, and the chat
+degrades to the asset's metadata block.
 
 ## Round-trip limits
 
@@ -228,15 +230,15 @@ clear is needed between runs.
 ├── composer.json          # spora-ai/spora-plugin-word + fabeat/markdown-word + the four ext-*
 ├── plugin.json            # manifest (class=Spora\Plugins\Word\WordPlugin, slug=word, icon=file-text)
 ├── src/
-│   ├── WordPlugin.php                       # entry point — binds DI, registers all three discoveries
-│   ├── Converters/
-│   │   └── DocxToMarkdownConverter.php      # MediaConverterInterface impl
+│   ├── WordPlugin.php                       # entry point — binds DI, registers both discoveries
 │   ├── Producers/
-│   │   └── MarkdownToDocxProducer.php       # MediaDerivativeProducerInterface impl
+│   │   ├── MarkdownToDocxProducer.php       # MediaDerivativeProducerInterface impl (md → docx)
+│   │   └── DocxToMarkdownProducer.php       # MediaDerivativeProducerInterface impl (docx → md)
 │   ├── Refiners/
 │   │   └── WordDocxMimeRefiner.php          # MediaMimeRefinerInterface impl (application/zip → DOCX)
 │   ├── Services/
-│   │   └── WordConversion.php               # shared size caps, deprecation suppressor, exception map
+│   │   ├── WordConversion.php               # shared size caps, deprecation suppressor, exception map
+│   │   └── WordSourceBytes.php              # shared parent-asset read (data_url / local), AssetStorage map
 │   └── Exceptions/
 │       ├── WordDocumentException.php
 │       ├── WordInvalidArgumentException.php
