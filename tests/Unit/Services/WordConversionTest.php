@@ -17,14 +17,21 @@ use Spora\Plugins\Word\Tests\Support\ErrorRecorder;
  * file. That is the only way to exercise the suppressor's `$errfile` conjunct:
  * `E_USER_*` cannot, because the handler's `E_DEPRECATED` mask never routes
  * those levels to it at all — a test using them would pass whether or not the
- * suppressor existed.
+ * suppressor existed. Writing the same declaration into a file and including
+ * it does not work either: the deprecation is a *compile-time* one, so it
+ * fires before the handler is installed, and the same file cannot be included
+ * twice without a redeclaration fatal.
  *
  * `$seq` is part of the function name so every call declares a fresh symbol
  * instead of fataling on a redeclaration.
  */
-function raise_engine_deprecation(int $seq): void
+function raiseEngineDeprecation(int $seq): void
 {
     $function = 'spora_word_deprecation_probe_' . $seq;
+    // NOSONAR php:S1523 — dynamic execution is the test, not a way in: the
+    // string is an int concatenated onto a fixed prefix, never input, and the
+    // snippet is the only way to compile a deprecation under an installed
+    // handler (see the docblock).
     eval("function {$function}(string \$value = null): string { return (string) \$value; }");
     $function();
 }
@@ -34,7 +41,7 @@ function raise_engine_deprecation(int $seq): void
  * whole defence against PHPWord's notice flood and there is no public seam
  * onto it; since PHP 8.1 reflection reaches private methods without help.
  */
-function invoke_suppressed(WordConversion $conversion, callable $callback): mixed
+function invokeSuppressed(WordConversion $conversion, callable $callback): mixed
 {
     $method = new ReflectionMethod(WordConversion::class, 'withoutUpstreamPhpWordNotices');
 
@@ -65,8 +72,8 @@ it('reads a rendered document back as github-flavoured markdown', function () {
 it('drops decoration when plain is requested', function () {
     $conversion = new WordConversion();
 
-    $decorated = DocxFixtures::partOf($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN), 'word/styles.xml');
-    $plain     = DocxFixtures::partOf($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN, plain: true), 'word/styles.xml');
+    $decorated = DocxFixtures::partOf($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN), DocxFixtures::STYLES_PART);
+    $plain     = DocxFixtures::partOf($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN, plain: true), DocxFixtures::STYLES_PART);
 
     expect($decorated)->toContain('IntenseQuote');
     expect($plain)->not->toContain('IntenseQuote');
@@ -147,8 +154,8 @@ it('lets a deprecation from outside phpoffice/phpword through to the handler bel
     set_error_handler($recorder, E_ALL);
 
     try {
-        invoke_suppressed($conversion, static function (): void {
-            raise_engine_deprecation(1);
+        invokeSuppressed($conversion, static function (): void {
+            raiseEngineDeprecation(1);
         });
     } finally {
         restore_error_handler();

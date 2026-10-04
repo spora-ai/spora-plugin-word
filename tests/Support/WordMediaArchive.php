@@ -8,7 +8,6 @@ use DI\ContainerBuilder;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use RuntimeException;
 use Spora\Core\Paths;
 use Spora\Core\SecurityManager;
 use Spora\Core\SecurityManagerInterface;
@@ -268,10 +267,10 @@ final class WordMediaArchive
         $onDisk = $assets . '/' . $token . '.bin';
 
         if (!is_dir($assets) && !mkdir($assets, 0755, true) && !is_dir($assets)) {
-            throw new RuntimeException('Could not create the local asset directory at ' . $assets);
+            throw new FixtureException('Could not create the local asset directory at ' . $assets);
         }
         if (file_put_contents($onDisk, $markdown) === false) {
-            throw new RuntimeException('Could not write the local asset file at ' . $onDisk);
+            throw new FixtureException('Could not write the local asset file at ' . $onDisk);
         }
 
         $asset = self::dataUrlAsset($markdown, $filename);

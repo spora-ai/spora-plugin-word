@@ -43,9 +43,9 @@ it('never widens the upload allowlist to the zip container type', function () {
     $converter = WordMediaArchive::converter($container);
     $registry  = WordMediaArchive::converterRegistry($container);
 
-    expect($converter->supportedMimeTypes())->not->toContain('application/zip')
+    expect($converter->supportedMimeTypes())->not->toContain(DocxFixtures::ZIP_MIME)
         ->and($registry->allSupportedMimeTypes())->toBe([WordConversion::DOCX_MIME])
-        ->and($registry->allSupportedMimeTypes())->not->toContain('application/zip');
+        ->and($registry->allSupportedMimeTypes())->not->toContain(DocxFixtures::ZIP_MIME);
 });
 
 it('is the converter the registry resolves for a docx, by mime and by extension', function () {
@@ -59,7 +59,7 @@ it('is the converter the registry resolves for a docx, by mime and by extension'
     // filename ending `.docx` still reaches this converter.
     expect($registry->findFor(WordConversion::DOCX_MIME, 'report.docx'))
         ->toBeInstanceOf(DocxToMarkdownConverter::class)
-        ->and($registry->findFor('application/zip', 'report.docx'))
+        ->and($registry->findFor(DocxFixtures::ZIP_MIME, 'report.docx'))
         ->toBeInstanceOf(DocxToMarkdownConverter::class);
 });
 

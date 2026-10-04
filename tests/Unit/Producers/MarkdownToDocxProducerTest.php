@@ -149,9 +149,9 @@ it('drops the library decoration only for a strictly true plain option', functio
 
     // `IntenseQuote` is the block-quote style `Configuration` adds over
     // Word's own; `withoutDecoration()` is what removes it.
-    expect(DocxFixtures::partOf($decorated->bytes, 'word/styles.xml'))->toContain('IntenseQuote')
-        ->and(DocxFixtures::partOf($plain->bytes, 'word/styles.xml'))->not->toContain('IntenseQuote')
-        ->and(DocxFixtures::partOf($truthy->bytes, 'word/styles.xml'))->toContain('IntenseQuote');
+    expect(DocxFixtures::partOf($decorated->bytes, DocxFixtures::STYLES_PART))->toContain('IntenseQuote')
+        ->and(DocxFixtures::partOf($plain->bytes, DocxFixtures::STYLES_PART))->not->toContain('IntenseQuote')
+        ->and(DocxFixtures::partOf($truthy->bytes, DocxFixtures::STYLES_PART))->toContain('IntenseQuote');
 });
 
 it('leaves the error-handler stack balanced on both storage paths', function () {

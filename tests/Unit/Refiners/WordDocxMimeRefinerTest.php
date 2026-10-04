@@ -33,7 +33,7 @@ afterEach(function () {
 it('upgrades a coarse zip verdict for a real Word package', function () {
     $refiner = new WordDocxMimeRefiner();
 
-    expect($refiner->refine(DocxFixtures::docx(), 'report.docx', 'application/zip'))
+    expect($refiner->refine(DocxFixtures::docx(), 'report.docx', DocxFixtures::ZIP_MIME))
         ->toBe(WordConversion::DOCX_MIME);
 });
 
@@ -57,7 +57,7 @@ it('declines a zip that carries no word document part', function () {
         'readme.md' => '# not a document',
     ]);
 
-    expect($refiner->refine($zip, 'bundle.zip', 'application/zip'))->toBeNull();
+    expect($refiner->refine($zip, 'bundle.zip', DocxFixtures::ZIP_MIME))->toBeNull();
 });
 
 it('declines another OOXML flavour so spreadsheets are not labelled as Word', function () use ($ooxmlSiblings) {
@@ -73,16 +73,16 @@ it('declines another OOXML flavour so spreadsheets are not labelled as Word', fu
     // Both are genuine OOXML packages carrying `[Content_Types].xml`, and
     // both would pass any "is this a zip?" or "is this an Office file?"
     // check. Only the absent `word/document.xml` separates them from Word.
-    expect($refiner->refine($spreadsheet, 'book.xlsx', 'application/zip'))->toBeNull()
-        ->and($refiner->refine($slides, 'deck.pptx', 'application/zip'))->toBeNull()
+    expect($refiner->refine($spreadsheet, 'book.xlsx', DocxFixtures::ZIP_MIME))->toBeNull()
+        ->and($refiner->refine($slides, 'deck.pptx', DocxFixtures::ZIP_MIME))->toBeNull()
         ->and(DocxFixtures::partOf($spreadsheet, 'xl/workbook.xml'))->toContain('<workbook');
 });
 
 it('declines bytes that are not a zip at all', function () {
     $refiner = new WordDocxMimeRefiner();
 
-    expect($refiner->refine('plain text, definitely not a zip', 'notes.txt', 'application/zip'))->toBeNull()
-        ->and($refiner->refine('', null, 'application/zip'))->toBeNull();
+    expect($refiner->refine('plain text, definitely not a zip', 'notes.txt', DocxFixtures::ZIP_MIME))->toBeNull()
+        ->and($refiner->refine('', null, DocxFixtures::ZIP_MIME))->toBeNull();
 });
 
 it('never opens a payload the sniffer did not call a zip', function () {
@@ -107,13 +107,13 @@ it('raises no diagnostic while declining, as its contract promises', function ()
         // `ZipArchive::open()` both warns and returns an error code for
         // bytes that are not a zip, so this is the one path where a refiner
         // that forgot its scoped handler would be visible.
-        $refiner->refine('not a zip at all', 'x.bin', 'application/zip');
+        $refiner->refine('not a zip at all', 'x.bin', DocxFixtures::ZIP_MIME);
         $refiner->refine(
             DocxFixtures::zipContaining($ooxmlSiblings + ['xl/workbook.xml' => '<workbook/>']),
             'book.xlsx',
-            'application/zip',
+            DocxFixtures::ZIP_MIME,
         );
-        $refiner->refine('', null, 'application/zip');
+        $refiner->refine('', null, DocxFixtures::ZIP_MIME);
     } finally {
         restore_error_handler();
     }
@@ -135,7 +135,7 @@ it('runs inside MimeSniffer and leaves a non-Word zip alone', function () {
     // restatement: a bare zip sniffs as `application/zip` on every libmagic
     // build, so a refiner that wrongly claimed it would flip this verdict.
     $zip = DocxFixtures::zipContaining(['notes.txt' => 'a plain archive']);
-    expect($sniffer->sniffFromBytes($zip, 'bundle.zip'))->toBe('application/zip')
+    expect($sniffer->sniffFromBytes($zip, 'bundle.zip'))->toBe(DocxFixtures::ZIP_MIME)
         ->and($sniffer->sniffFromBytes(DocxFixtures::docx(), 'report.docx'))
         ->toBe(WordConversion::DOCX_MIME);
 });

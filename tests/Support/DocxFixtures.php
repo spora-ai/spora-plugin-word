@@ -6,7 +6,6 @@ namespace Spora\Plugins\Word\Tests\Support;
 
 use MarkdownWord\Configuration;
 use MarkdownWord\MarkdownToWord;
-use RuntimeException;
 use ZipArchive;
 
 /**
@@ -22,6 +21,22 @@ use ZipArchive;
  */
 final class DocxFixtures
 {
+    /**
+     * `libmagic`'s verdict for a bare zip, and the coarse MIME
+     * {@see \Spora\Plugins\Word\Refiners\WordDocxMimeRefiner} exists to
+     * promote. Every test that drives the refiner, or that asserts the
+     * converter refuses to claim the container type, needs this exact string —
+     * and it is not the plugin's own constant to import: it is a property of
+     * the archive format, which is why it lives here rather than in `src/`.
+     */
+    public const ZIP_MIME = 'application/zip';
+
+    /**
+     * Where a rendered document keeps Word's own style definitions, and so
+     * where a test reads to see whether decoration was dropped.
+     */
+    public const STYLES_PART = 'word/styles.xml';
+
     /**
      * Exercises every branch that matters downstream: a heading (style lookup),
      * a bold run, a list (the `Style::getStyle()` deprecation source) and a
@@ -66,7 +81,7 @@ final class DocxFixtures
     {
         $path = tempnam(sys_get_temp_dir(), 'spora-docx-fixture-');
         if ($path === false) {
-            throw new RuntimeException('Could not stage a fixture file.');
+            throw new FixtureException('Could not stage a fixture file.');
         }
         // `tempnam()` leaves an empty file, and opening an empty file with
         // ZipArchive is itself deprecated on PHP 8.5. Remove it first so the
@@ -76,7 +91,7 @@ final class DocxFixtures
         try {
             $archive = new ZipArchive();
             if ($archive->open($path, ZipArchive::CREATE) !== true) {
-                throw new RuntimeException('Could not create the fixture zip at ' . $path);
+                throw new FixtureException('Could not create the fixture zip at ' . $path);
             }
             foreach ($parts as $name => $contents) {
                 $archive->addFromString($name, $contents);
@@ -85,7 +100,7 @@ final class DocxFixtures
 
             $bytes = file_get_contents($path);
             if (!is_string($bytes)) {
-                throw new RuntimeException('Could not read back the fixture zip at ' . $path);
+                throw new FixtureException('Could not read back the fixture zip at ' . $path);
             }
 
             return $bytes;
@@ -134,10 +149,10 @@ final class DocxFixtures
     {
         $path = tempnam(sys_get_temp_dir(), 'spora-docx-fixture-');
         if ($path === false) {
-            throw new RuntimeException('Could not stage a fixture file.');
+            throw new FixtureException('Could not stage a fixture file.');
         }
         if (file_put_contents($path, $bytes) === false) {
-            throw new RuntimeException('Could not write a fixture file to ' . $path);
+            throw new FixtureException('Could not write a fixture file to ' . $path);
         }
 
         return $path;

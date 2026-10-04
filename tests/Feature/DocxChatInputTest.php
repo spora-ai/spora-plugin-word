@@ -126,7 +126,7 @@ it('types a word package correctly and leaves a bare zip coarse', function () {
         ->and($docx->markdown_content)->not->toBeNull()
         // The guard against xlsx/pptx: claiming every `PK\x03\x04` blob
         // would relabel spreadsheets as Word documents.
-        ->and($zip->mime_type)->toBe('application/zip')
+        ->and($zip->mime_type)->toBe(DocxFixtures::ZIP_MIME)
         ->and($zip->markdown_content)->toBeNull()
         ->and($logger->warnings())->toBe([]);
 });
