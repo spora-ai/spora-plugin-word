@@ -25,13 +25,23 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # `MediaMimeRefinerInterface` is not in a tagged spora-core release yet —
-  # it ships with the spora-core PR that adds the refiner seam. composer.json
-  # therefore resolves spora-core through a `path` repository so the plugin can
-  # be developed and tested against that branch, with the version pinned in
-  # `options.versions` so the constraint is stable whichever branch is checked
-  # out. Once core tags the release carrying the seam, this entry is deleted and
-  # spora-core resolves from Packagist like every other plugin.
+  # `MediaMimeRefinerInterface` is not in a tagged spora-core release yet — it
+  # ships with core PR #282 ("a create_media operation, a document embed, and a
+  # MIME-refiner seam"), which is merged: the seam is on core's `main`, and not
+  # in the newest tag either (v0.29.0 predates it). composer.json therefore
+  # still resolves spora-core through a `path` repository, with the version
+  # pinned in `options.versions` so the constraint is stable whichever ref is
+  # checked out. Once core tags the release carrying the seam, this entry is
+  # deleted and spora-core resolves from Packagist like every other plugin.
+  #
+  # This was `feat/media-file-card-and-create-media`, the branch #282 merged
+  # from, and the branch no longer exists: every job that checks core out at
+  # this ref failed on `git fetch` of a deleted ref, which took `test` — and
+  # with it the `sonarcloud` job that `needs: test` — down with it. `main` is
+  # the ref the merged result lives on, so it is what the plugin tests against.
+  # A moving target, yes; a SHA pin would be tighter but would need a manual
+  # bump for every core fix this plugin is meant to inherit, and the seam
+  # argument applies to a commit just as much as to a branch.
   #
   # `actions/checkout`'s `path:` is workspace-relative, so the core checkout
   # lands *inside* this repo's workspace while the path repository is declared
@@ -39,7 +49,7 @@ env:
   # job that runs `composer install` therefore symlinks the checkout to the
   # sibling location first; without it all four of them fail with
   # `Source path "../spora-core" is not found`.
-  SPORA_CORE_REF: feat/media-file-card-and-create-media
+  SPORA_CORE_REF: main
 
 jobs:
   test:
