@@ -29,9 +29,12 @@ it('renders a stored markdown asset into a downloadable docx derivative', functi
     $parent = WordMediaArchive::ingestMarkdown($container);
 
     // `ingestFromBytes()` always re-sniffs: `create_media`'s `text/markdown`
-    // is a hint, never a claim, so the row lands as whatever libmagic makes
-    // of the bytes. The producer still matches — on the `.md` extension.
-    expect($parent->mime_type)->toBe('text/plain')
+    // is a hint, never a claim, so the row lands as whatever the sniffer makes
+    // of the bytes. libmagic calls any prose `text/plain`; the `.md` extension
+    // is what refines that to `text/markdown`, which is the MIME the producer
+    // advertises. Both the MIME and the extension match on their own, so the
+    // chain does not depend on the filename having been spelled out.
+    expect($parent->mime_type)->toBe('text/markdown')
         ->and($parent->storage_mode)->toBe('data_url');
 
     $derivative = $derivatives->createFromRequest($parent, 'docx');

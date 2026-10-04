@@ -54,10 +54,16 @@ What changes how you write the call:
 
 - `filename` is what the user sees on the download card. Name the document the
   way the user would (`q3-report`), not `document.md` or `output.md`. The
-  extension is appended for you when the hint implies one.
+  `.md` extension is appended for you when the hint implies one, so
+  `q3-report` is the right thing to send and the card reads `q3-report.md`.
 - `mime_type` is a **hint**, default `text/markdown`. The archive re-sniffs the
-  bytes, so `data.mime_type` on the response is the authoritative type — never
-  report the type you asked for as though it had been confirmed.
+  bytes and stores what it sniffed, so `data.mime_type` on the response is the
+  authoritative type — never report the type you asked for as though it had
+  been confirmed. The bytes alone cannot distinguish Markdown from any other
+  prose, so the `.md` extension is what lifts the stored type to
+  `text/markdown`. Send the bare name and this all happens; there is no reason
+  to spell the extension out yourself, and no format other than `docx` exists,
+  so a producer lookup cannot fail for want of one.
 - `content` is capped at 1 MiB. Past that the call fails with both byte counts;
   split the document rather than truncating it.
 - The only producer option is `options: {"plain": true}`, and it is **not**
@@ -104,11 +110,19 @@ which is exactly why a Word document is two calls and nothing else.
 `application/vnd.openxmlformats-officedocument.wordprocessingml.document` MIME
 type.
 
-The producer accepts Markdown parents only — `text/markdown` and the `md` /
-`markdown` extensions. A `docx` derivative's parent is therefore always a
-Markdown asset, never a PDF or an image, and a DOCX is never itself converted
-into another DOCX. (Reading a `.docx` back is the converter's job, not a
-derivative.)
+The producer accepts Markdown parents only — the `text/markdown` MIME or the
+`md` / `markdown` extension, either of which is enough. A `docx` derivative's
+parent is therefore always a Markdown asset, never a PDF or an image, and a
+DOCX is never itself converted into another DOCX. (Reading a `.docx` back is
+the converter's job, not a derivative.)
+
+**There is no PDF output, and asking for one will fail.** `format: "pdf"`
+returns "No derivative producer supports format pdf" unless some *other*
+plugin registers one — Typst does, if it is installed, but it accepts Typst
+sources rather than Markdown, so it will not pick up a Markdown parent
+either. Do not offer a PDF of a document you authored here: the only routes
+are a producer you do not control, or the user exporting from Word. Say so
+plainly instead of retrying.
 
 Ask the archive rather than guess when you need to know what exists:
 
