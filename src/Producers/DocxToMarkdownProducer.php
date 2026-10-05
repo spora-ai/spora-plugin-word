@@ -37,6 +37,13 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
  * `.docx` still resolves the parent to this producer. Both the MIME and the
  * extension are needed, and only the MIME is an allowlist entry.
  *
+ * **That union arrives with core's md-derivative cut, not before.**
+ * `allowedMimeTypes()` matches by exact string, so no `text/*` prefix rule
+ * stands in for the entry, and on a core that predates the cut the same
+ * allowlist entry is fed by the *converter* registry — which that cut deletes
+ * and which this PR stops writing to. Merged early, the plugin still boots
+ * and every `.docx` upload is a 415 at the gate.
+ *
  * `application/zip` is deliberately **not** declared — claiming the container
  * type would push every zip in the world through the upload picker.
  *
