@@ -12,7 +12,7 @@ use Spora\Core\Paths;
 use Spora\Core\SecurityManager;
 use Spora\Core\SecurityManagerInterface;
 use Spora\Models\MediaAsset;
-use Spora\Plugins\Word\Converters\DocxToMarkdownConverter;
+use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
 use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
 use Spora\Plugins\Word\Services\WordConversion;
 use Spora\Services\AssetStore;
@@ -22,9 +22,7 @@ use Spora\Services\LocalAssetStore;
 use Spora\Services\MediaArchive\MediaArchiveIngestPipeline;
 use Spora\Services\MediaArchive\MediaArchiveService;
 use Spora\Services\MediaArchive\MediaArchiveUrlResolver;
-use Spora\Services\MediaArchive\MediaConverterRegistry;
 use Spora\Services\MediaArchive\MediaDerivativeService;
-use Spora\Services\MediaArchive\MediaIngestDecoder;
 use Spora\Services\MediaArchive\MediaIngestRequest;
 use Spora\Services\MediaArchive\MetadataExtractor;
 use Spora\Services\MediaArchive\MimeSniffer;
@@ -36,20 +34,8 @@ use Symfony\Component\HttpClient\MockHttpClient;
 /**
  * Wires the media-archive object graph this plugin plugs into.
  *
- * Everything here is built by a **real** `DI\Container` from definitions
- * equivalent to core's `ContainerDefinitions`, not by hand-assembled mocks.
- * Two contracts only hold when the graph is genuinely resolved rather than
- * stubbed: `MediaDerivativeService::findProducer()` instantiates each
- * registered producer *through the container* (which is why a plugin
- * producer may take constructor arguments at all), and
- * `MediaConverterRegistry` snapshots `MediaConverterDiscovery` at
- * construction time, so a registry built before a test registers its
- * converter can never see it.
- *
- * A fresh container per call rather than a shared static: the registries
- * `Pest.php` resets in `afterEach` are process-global, and a container
- * cached across tests would keep serving a `MediaConverterRegistry` built
- * from a previous test's registrations.
+ * A **real** `DI\Container`, not mocks: `findProducer()` instantiates each producer
+ * *through* it, which is what lets one take arguments. Fresh per call.
  */
 final class WordMediaArchive
 {
@@ -104,28 +90,10 @@ final class WordMediaArchive
                 self::DB_MODE_CEILING,
             )),
 
-            // Reads the discovery list once, at construction, so it must be
-            // built lazily and after the test has registered its converter.
-            MediaConverterRegistry::class => \DI\factory(
-                static fn(ContainerInterface $c): MediaConverterRegistry => new MediaConverterRegistry($c),
-            ),
-            MediaArchiveIngestPipeline::class => \DI\factory(
-                static fn(ContainerInterface $c): MediaArchiveIngestPipeline => new MediaArchiveIngestPipeline(
-                    new MediaIngestDecoder(),
-                    $c->get(MediaArchiveUrlResolver::class),
-                    new MimeSniffer(),
-                    $c->get(MetadataExtractor::class),
-                    $c->get(AssetStore::class),
-                    $c->get(MediaConverterRegistry::class),
-                    new PrincipalService(new PrincipalResolver()),
-                    $c->get(LoggerInterface::class),
-                ),
-            ),
-            MediaArchiveService::class => \DI\factory(
-                static fn(ContainerInterface $c): MediaArchiveService => new MediaArchiveService(
-                    $c->get(MediaArchiveIngestPipeline::class),
-                ),
-            ),
+            // Autowired: the ingest pipeline is core's class and a moving target.
+            MediaArchiveIngestPipeline::class => \DI\autowire(),
+            MediaArchiveService::class         => \DI\autowire(),
+            // A definition, so the autowired pipeline gets this same instance.
             MediaDerivativeService::class => \DI\factory(
                 static fn(ContainerInterface $c): MediaDerivativeService => new MediaDerivativeService(
                     $c->get(AssetStore::class),
@@ -155,19 +123,9 @@ final class WordMediaArchive
         return self::resolve($container, MarkdownToDocxProducer::class);
     }
 
-    /**
-     * The registry over whatever is in `MediaConverterDiscovery` *now*. It
-     * snapshots the list once at construction, so a test that registers a
-     * converter afterwards has to ask for a fresh container.
-     */
-    public static function converterRegistry(ContainerInterface $container): MediaConverterRegistry
+    public static function extractor(ContainerInterface $container): DocxToMarkdownProducer
     {
-        return self::resolve($container, MediaConverterRegistry::class);
-    }
-
-    public static function converter(ContainerInterface $container): DocxToMarkdownConverter
-    {
-        return self::resolve($container, DocxToMarkdownConverter::class);
+        return self::resolve($container, DocxToMarkdownProducer::class);
     }
 
     /**
@@ -192,7 +150,7 @@ final class WordMediaArchive
 
     /**
      * The chat-input half: a user drops a `.docx` into the composer and the
-     * ingest pipeline is expected to extract its text.
+     * archive is expected to accept it and let the extract producer read it.
      */
     public static function ingestDocxUpload(
         ContainerInterface $container,
@@ -216,17 +174,15 @@ final class WordMediaArchive
      */
     public static function dataUrlAsset(string $markdown, string $filename = 'report.md'): MediaAsset
     {
-        $asset = new MediaAsset();
+        return self::unsavedAsset('text/markdown', $markdown, $filename);
+    }
 
-        $asset->id          = 'word-parent-' . bin2hex(random_bytes(8));
-        $asset->mime_type   = 'text/markdown';
-        $asset->media_type  = 'document';
-        $asset->filename    = $filename;
-        $asset->storage_mode = 'data_url';
-        $asset->byte_size   = strlen($markdown);
-        $asset->payload     = $markdown;
-
-        return $asset;
+    /**
+     * {@see self::dataUrlAsset()} with the Word MIME the resolver would route here.
+     */
+    public static function docxAsset(string $docx, string $filename = 'report.docx'): MediaAsset
+    {
+        return self::unsavedAsset(WordConversion::DOCX_MIME, $docx, $filename);
     }
 
     /**
@@ -245,13 +201,7 @@ final class WordMediaArchive
     }
 
     /**
-     * A `local`-mode row with its bytes genuinely on disk, resolved through
-     * the container's own {@see LocalAssetStore} so the token, the
-     * `<token>.<ext>` filename and the `Paths` root all agree.
-     *
-     * `LocalAssetStore::readFromAsset()` picks the extension from the MIME
-     * alone, and `text/markdown` is not in its table, so the file is named
-     * `<token>.bin` — the same name production would resolve.
+     * A `local`-mode row with its bytes genuinely on disk.
      *
      * @return array{asset: MediaAsset, store: LocalAssetStore}
      */
@@ -260,20 +210,59 @@ final class WordMediaArchive
         string $markdown,
         string $filename = 'report.md',
     ): array {
-        $store  = self::resolve($container, LocalAssetStore::class);
-        $paths  = self::resolve($container, Paths::class);
-        $token  = bin2hex(random_bytes(16));
-        $assets = $paths->storage('assets');
-        $onDisk = $assets . '/' . $token . '.bin';
+        return self::localCopyOf($container, 'text/markdown', $markdown, $filename);
+    }
 
-        if (!is_dir($assets) && !mkdir($assets, 0755, true) && !is_dir($assets)) {
-            throw new FixtureException('Could not create the local asset directory at ' . $assets);
-        }
-        if (file_put_contents($onDisk, $markdown) === false) {
-            throw new FixtureException('Could not write the local asset file at ' . $onDisk);
+    /**
+     * @return array{asset: MediaAsset, store: LocalAssetStore}
+     */
+    public static function localDocxAsset(
+        ContainerInterface $container,
+        string $docx,
+        string $filename = 'report.docx',
+    ): array {
+        return self::localCopyOf($container, WordConversion::DOCX_MIME, $docx, $filename);
+    }
+
+    private static function unsavedAsset(string $mime, string $bytes, string $filename): MediaAsset
+    {
+        $asset = new MediaAsset();
+
+        $asset->id           = 'word-parent-' . bin2hex(random_bytes(8));
+        $asset->mime_type    = $mime;
+        $asset->media_type   = 'document';
+        $asset->filename     = $filename;
+        $asset->storage_mode = 'data_url';
+        $asset->byte_size    = strlen($bytes);
+        $asset->payload      = $bytes;
+
+        return $asset;
+    }
+
+    /**
+     * The row comes from the reference `store()` returns: `readFromAsset()` resolves
+     * `<token>.<ext>` from the MIME alone, a table the host owns.
+     *
+     * `$filename` is deliberately not passed to `store()`: its extension wins over
+     * the MIME and `readFromAsset()` has none to offer. It still names the row.
+     *
+     * @return array{asset: MediaAsset, store: LocalAssetStore}
+     */
+    private static function localCopyOf(
+        ContainerInterface $container,
+        string $mime,
+        string $bytes,
+        string $filename,
+    ): array {
+        $store     = self::resolve($container, LocalAssetStore::class);
+        $reference = $store->store($bytes, $mime, null);
+        $token     = $reference->token;
+
+        if ($token === null || $token === '') {
+            throw new FixtureException('LocalAssetStore::store() returned a local reference with no token.');
         }
 
-        $asset = self::dataUrlAsset($markdown, $filename);
+        $asset = self::unsavedAsset($mime, $bytes, $filename);
 
         $asset->storage_mode = 'local';
         $asset->asset_token  = $token;

@@ -18,7 +18,7 @@ use ZipArchive;
  * `MimeSniffer::MAGIC_SIGNATURES` cannot close the gap — `PK\x03\x04` is the
  * first local-file-header signature of *every* zip. On a host with old
  * libmagic a DOCX upload is therefore rejected outright with a 415, before
- * this plugin's converter is ever consulted, because the upload allowlist is
+ * this plugin's producers are ever consulted, because the upload allowlist is
  * gated on the sniffed MIME alone.
  *
  * The check is a package member lookup, and that is the whole safety

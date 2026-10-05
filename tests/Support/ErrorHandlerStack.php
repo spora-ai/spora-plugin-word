@@ -16,7 +16,7 @@ namespace Spora\Plugins\Word\Tests\Support;
  * diagnostics a probe would otherwise raise.
  *
  * Identity comparison (`===`) is the right test rather than equality: a
- * `MediaConverterRegistry` walk or a leaked suppressor both answer with a
+ * `MediaDerivativeService` walk or a leaked suppressor both answer with a
  * different instance, and only the sentinel we installed ourselves is the
  * frame the caller expects to still be on top.
  */
