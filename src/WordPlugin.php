@@ -57,7 +57,7 @@ final class WordPlugin extends AbstractPlugin implements EventSubscriberInterfac
     }
 
     /**
-     * Bind the plugin's four classes and register all three media-archive
+     * Bind the plugin's five classes and register all three media-archive
      * contributions.
      *
      * @throws PluginLoadFailedException when the host's spora-core predates the

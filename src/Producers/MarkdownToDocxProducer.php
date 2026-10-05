@@ -70,8 +70,7 @@ final class MarkdownToDocxProducer implements MediaDerivativeProducerInterface
     /**
      * The Composer **package** name, matching what
      * `spora-plugin-typst`'s producer returns rather than the `plugin.json`
-     * slug. Persisted into `media_derivatives.producer_plugin` and part of the
-     * idempotency natural key — changing it orphans existing rows.
+     * slug.
      */
     public function pluginSlug(): string
     {

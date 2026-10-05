@@ -101,14 +101,12 @@ final class WordMediaArchive
 
             // Autowired, not hand-constructed with a positional argument
             // list. `MediaArchiveIngestPipeline` is core's class and its
-            // constructor is a moving target: the converter registry that
-            // used to sit in slot 6 is being replaced by the derivative
-            // service. Naming each dependency here would pin this harness to
-            // one core revision and break the moment core shifts a slot,
-            // over a class this plugin does not own. Every collaborator the
-            // pipeline needs is either defined above or autowirable, and
-            // `WordPlugin` relies on exactly this — `\DI\autowire()` — to wire
-            // its own producers.
+            // constructor is a moving target: naming each dependency here
+            // would pin this harness to one core revision and break the
+            // moment core shifts a slot, over a class this plugin does not
+            // own. Every collaborator the pipeline needs is either defined
+            // above or autowirable, and `WordPlugin` relies on exactly this
+            // — `\DI\autowire()` — to wire its own producers.
             MediaArchiveIngestPipeline::class => \DI\autowire(),
             MediaArchiveService::class         => \DI\autowire(),
             // A definition, so the autowired ingest pipeline receives this

@@ -14,12 +14,10 @@ use Spora\Services\LocalAssetStore;
 /**
  * The single place both producers read a parent asset's bytes.
  *
- * A sibling of {@see WordConversion} for the same reason: every concern here
- * is only correct when both directions share one copy. The two storage modes
- * each need one emptiness check and one failure message, the
- * `AssetStorageException` → `WordRuntimeException` translation has to happen
- * once, and the scoped `set_error_handler` around the disk read must not be
- * duplicated into a class that could drift out of step with it.
+ * A sibling of {@see WordConversion} for the same reason: the scoped
+ * `set_error_handler` around the disk read must not exist in two copies that
+ * could interleave and pop each other's frame, and both storage modes have to
+ * produce one emptiness check and one failure message.
  *
  * Reads go through the archive's own asset stores rather than off
  * `$asset->payload` directly, so `data_url` and `local` resolve the same way
@@ -60,9 +58,6 @@ final class WordSourceBytes
 
     private function readDatabaseBytes(MediaAsset $asset, string $producer): string
     {
-        // Routed through DatabaseAssetStore rather than reading `$asset->payload`
-        // directly so both storage modes share one emptiness check and one
-        // failure message.
         $stored = $this->mappedRead(
             fn(): array => $this->databaseAssetStore->read($asset),
             $asset,
@@ -122,14 +117,12 @@ final class WordSourceBytes
     }
 
     /**
-     * Run a core asset-store read and translate its
-     * {@see AssetStorageException} into the plugin's own hierarchy.
-     *
-     * Both stores signal "this asset has no bytes you can read" with that
-     * class — a legacy data_url row with a null payload, a missing
-     * `asset_token`, a file deleted out from under the row. Left alone it
-     * escapes as a `RuntimeException` from `Spora\Services`, which breaks the
-     * promise that callers only ever see `WordRuntimeException`.
+     * Both stores signal "this asset has no bytes you can read" with
+     * {@see AssetStorageException} — a legacy data_url row with a null
+     * payload, a missing `asset_token`, a file deleted out from under the row.
+     * Left alone it escapes as a `RuntimeException` from `Spora\Services`,
+     * which breaks the promise that callers only ever see
+     * `WordRuntimeException`.
      *
      * @param callable(): array{path?: string, length?: int, bytes?: string} $read
      *

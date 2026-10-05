@@ -15,23 +15,20 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
  * Extracts a Word document into GitHub-Flavored Markdown as an `md`
  * derivative.
  *
- * This is the *chat-input* half of the plugin. The other half is
- * {@see MarkdownToDocxProducer}, and the two are
- * the same fact in opposite directions: a `.docx` becomes a Markdown
- * derivative, and that derivative is itself a legal parent for a `.docx`
- * one. Both live on {@see MediaDerivativeProducerInterface} rather than
- * splitting a byte → string contract off against a `MediaAsset` → row
- * contract, so one seam carries both and the round trip an agent walks stays
- * inside one interface.
+ * The *chat-input* half of the plugin, and the same fact in the opposite
+ * direction to {@see MarkdownToDocxProducer}: a `.docx` becomes a Markdown
+ * derivative, and that derivative is itself a legal parent for a `.docx` one.
+ * Both live on {@see MediaDerivativeProducerInterface} rather than splitting
+ * a `bytes → string` contract off against a `MediaAsset` → row contract, so
+ * one seam carries both and the round trip stays inside one interface.
  *
- * The producer receives the already-resolved {@see MediaAsset} straight from
- * `MediaDerivativeService`, which has done the ownership check, so it reads
- * the payload through {@see WordSourceBytes} rather than going through
- * `MediaAssetReader` — that service is id-based and would repeat (and
- * re-interpret) the check.
+ * The producer is handed an already-resolved {@see MediaAsset} from
+ * `MediaDerivativeService`, which has done the ownership check — so it reads
+ * the payload through {@see WordSourceBytes} rather than
+ * `MediaAssetReader`, which is id-based and would repeat the check.
  *
- * **The DOCX MIME declared below is the load-bearing part.** Every
- * registered producer's `supportedSourceFormats()` is unioned into
+ * **The DOCX MIME declared below is the load-bearing part.** Every registered
+ * producer's `supportedSourceFormats()` is unioned into
  * `MediaAllowedTypesService`'s upload allowlist, and `.docx` reaches that list
  * *only* through this method — so dropping the MIME here does not degrade the
  * extraction, it makes every `.docx` upload a 415 at the gate. The bare `docx`
@@ -40,7 +37,7 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
  * `.docx` still resolves the parent to this producer. Both the MIME and the
  * extension are needed, and only the MIME is an allowlist entry.
  *
- * `application/zip` is deliberately **not** declared. Claiming the container
+ * `application/zip` is deliberately **not** declared — claiming the container
  * type would push every zip in the world through the upload picker.
  *
  * Failures propagate. `produce()`'s {@see \Spora\Plugins\Word\Exceptions\WordDocumentException}
@@ -52,7 +49,9 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
  * `(parent_id, format, producer_plugin, producer_operation)`. That makes
  * {@see self::pluginSlug()} and {@see self::operationName()} part of the
  * natural key: renaming either one orphans every derivative row already written
- * instead of refreshing them.
+ * instead of refreshing them. `word.extract` is distinct from the render
+ * producer's `word.render` for exactly that reason — a shared name would
+ * collapse the two directions onto one row.
  */
 final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
 {
@@ -75,11 +74,12 @@ final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
 
     /**
      * The MIME the derivative row is stamped with, and the one
-     * {@see MarkdownToDocxProducer} accepts as a source — so the `md` output is
-     * directly a legal parent for a `.docx` render, with no format juggling in
-     * between. {@see \Spora\Services\MediaArchive\MediaType::fromMime()} reads
-     * it as `Document`, which is what the archive and the chat file card want
-     * for text a user might download.
+     * {@see MarkdownToDocxProducer} accepts as a source — which is what makes
+     * the `md` output a legal parent for a `.docx` render, with no format
+     * juggling in between.
+     * {@see \Spora\Services\MediaArchive\MediaType::fromMime()} reads it as
+     * `Document`, which is what the archive and the chat file card want for
+     * text a user might download.
      */
     private const MARKDOWN_MIME = 'text/markdown';
 
@@ -90,9 +90,7 @@ final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
 
     /**
      * The Composer **package** name, matching what
-     * {@see MarkdownToDocxProducer::pluginSlug()} returns. Persisted into
-     * `media_derivatives.producer_plugin` and part of the idempotency natural
-     * key — changing it orphans existing rows.
+     * {@see MarkdownToDocxProducer::pluginSlug()} returns.
      */
     public function pluginSlug(): string
     {

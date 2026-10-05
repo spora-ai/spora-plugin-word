@@ -37,13 +37,6 @@ it('subscribes to the container-building event with a public listener', function
         ->and($method->getNumberOfParameters())->toBe(1);
 });
 
-/**
- * The three registrations, and the shape that replaced the converter: both
- * halves of the round trip are producers now, so `md` extraction and `docx`
- * rendering share one discovery call and the refiner is the only other seam.
- * Registering the producers without the refiner, or the refiner without the
- * producers, leaves a silently half-working plugin rather than an error.
- */
 it('registers both producers and the refiner on boot', function () {
     (new WordPlugin())->onContainerBuilding(new ContainerBuildingEvent(new ContainerBuilder()));
 
@@ -53,8 +46,7 @@ it('registers both producers and the refiner on boot', function () {
 });
 
 /**
- * The registration half, pinned at the source level rather than through
- * `MediaConverterDiscovery::all()`.
+ * The registration half, pinned at the source level.
  *
  * `class_exists()` would be the obvious check and it is the wrong one: the
  * plugin's classmap still carries a deleted path until `composer
@@ -75,8 +67,6 @@ it('never reaches for the converter discovery this plugin no longer uses', funct
 
     expect(interface_exists(MediaDerivativeProducerInterface::class))->toBeTrue()
         ->and($source)->toContain('MediaDerivativeProducerDiscovery::add(')
-        // Both directions on the one seam the plugin still declares, and no
-        // mention of the `bytes -> string` contract at all.
         ->and(substr_count($source, 'MediaDerivativeProducerDiscovery::add('))->toBe(2)
         ->and($source)->not->toContain('MediaConverter');
 });

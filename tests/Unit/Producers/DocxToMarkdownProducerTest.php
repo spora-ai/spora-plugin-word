@@ -23,13 +23,13 @@ afterEach(function () {
 });
 
 /**
- * Every value here is persisted or matched against, none of it is
- * decoration. `pluginSlug()` and `operationName()` land in
- * `media_derivatives` and are half that table's natural key, so renaming
- * either orphans every derivative already written instead of refreshing it.
- * The source list is what `MediaDerivativeService::findProducer()` matches a
- * parent's MIME and extension against, and the format list is the
- * 16-character `media_derivatives.format` column.
+ * Every value here is persisted or matched against. `pluginSlug()` and
+ * `operationName()` land in `media_derivatives` and are half that table's
+ * natural key, so renaming either orphans every derivative already written
+ * instead of refreshing it. The source list is what
+ * `MediaDerivativeService::findProducer()` matches a parent's MIME and
+ * extension against, and the format list is the 16-character
+ * `media_derivatives.format` column.
  */
 it('declares the identity the media_derivatives natural key is built from', function () {
     $producer = WordMediaArchive::extractor(WordMediaArchive::container());
@@ -45,9 +45,6 @@ it('declares the identity the media_derivatives natural key is built from', func
 });
 
 /**
- * The negative that carries the most weight in this class, restated for the
- * seam that replaced the converter.
- *
  * `MediaAllowedTypesService` publishes the union of every registered
  * producer's source formats as the upload allowlist, filtered on the entries
  * containing a `/`. One stray `application/zip` here would put every zip
@@ -64,8 +61,7 @@ it('keeps the docx mime in the upload allowlist without widening it to the zip c
 
     // What core's `/` filter leaves in the LLM-facing "Allowed: %s" string.
     // The bare extensions each producer also declares are dropped by that
-    // filter, which is why they are harmless here and why the return shape
-    // stays a mixed list rather than being "fixed".
+    // filter, which is why they are harmless here.
     $allowlist = [];
     foreach ([$extract, $render] as $producer) {
         foreach ($producer->supportedSourceFormats() as $format) {
@@ -77,9 +73,6 @@ it('keeps the docx mime in the upload allowlist without widening it to the zip c
 
     expect($allowlist)->toContain(WordConversion::DOCX_MIME)
         ->and($allowlist)->toContain('text/markdown')
-        // The guard against xlsx/pptx/epub: claiming the container type
-        // would relabel every zip in the picker as something this plugin
-        // can read.
         ->and($allowlist)->not->toContain(DocxFixtures::ZIP_MIME);
 });
 
@@ -322,9 +315,9 @@ it('leaves the error-handler stack balanced and still suppressing on both storag
 
 /**
  * The two producers are separate classes with separate ctor dependencies, so
- * nothing in PHP would stop one from being renamed onto the other's identity
- * and quietly collapsing a round trip onto a single derivative row. This is
- * the cheapest place to catch that.
+ * nothing in PHP would stop one being renamed onto the other's identity and
+ * quietly collapsing a round trip onto a single derivative row. This is the
+ * cheapest place to catch that.
  */
 it('does not share an operation name with the render producer', function () {
     $extract = WordMediaArchive::extractor(WordMediaArchive::container());
