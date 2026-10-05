@@ -225,13 +225,7 @@ final class WordMediaArchive
     }
 
     /**
-     * A `local`-mode row with its bytes genuinely on disk, resolved through
-     * the container's own {@see LocalAssetStore} so the token, the
-     * `<token>.<ext>` filename and the `Paths` root all agree.
-     *
-     * `LocalAssetStore::readFromAsset()` picks the extension from the MIME
-     * alone, and `text/markdown` is not in its table, so the file is named
-     * `<token>.bin` — the same name production would resolve.
+     * A `local`-mode row with its bytes genuinely on disk.
      *
      * @return array{asset: MediaAsset, store: LocalAssetStore}
      */
@@ -244,10 +238,7 @@ final class WordMediaArchive
     }
 
     /**
-     * The `local` twin of {@see self::docxAsset()}. Neither the DOCX MIME nor
-     * `text/markdown` is in `LocalAssetStore::pickExtension()`'s table, so
-     * both land as `<token>.bin` — which is exactly the name the store will
-     * resolve on the way back out.
+     * The `local` twin of {@see self::docxAsset()}.
      *
      * @return array{asset: MediaAsset, store: LocalAssetStore}
      */
@@ -275,6 +266,22 @@ final class WordMediaArchive
     }
 
     /**
+     * Write `$bytes` to disk through the host's own {@see LocalAssetStore} and
+     * hand back a `local`-mode row that resolves to the same file.
+     *
+     * The row is built from the reference `store()` returns, not from a name
+     * this file constructs. `readFromAsset()` resolves `<token>.<ext>` from
+     * the row's MIME alone, and that mime → ext table belongs to the host:
+     * re-deriving it here duplicated a decision this fixture does not own, and
+     * went stale the moment core taught the table a MIME the plugin was
+     * already using.
+     *
+     * `$filename` is deliberately not handed to `store()` — that argument's
+     * extension wins over the MIME, while `readFromAsset()` has no filename to
+     * offer, so passing one would make the writer and the reader disagree.
+     * It still names the row, which is what the resolver's extension fallback
+     * and the UI read.
+     *
      * @return array{asset: MediaAsset, store: LocalAssetStore}
      */
     private static function localCopyOf(
@@ -283,17 +290,12 @@ final class WordMediaArchive
         string $bytes,
         string $filename,
     ): array {
-        $store  = self::resolve($container, LocalAssetStore::class);
-        $paths  = self::resolve($container, Paths::class);
-        $token  = bin2hex(random_bytes(16));
-        $assets = $paths->storage('assets');
-        $onDisk = $assets . '/' . $token . '.bin';
+        $store     = self::resolve($container, LocalAssetStore::class);
+        $reference = $store->store($bytes, $mime, null);
+        $token     = $reference->token;
 
-        if (!is_dir($assets) && !mkdir($assets, 0755, true) && !is_dir($assets)) {
-            throw new FixtureException('Could not create the local asset directory at ' . $assets);
-        }
-        if (file_put_contents($onDisk, $bytes) === false) {
-            throw new FixtureException('Could not write the local asset file at ' . $onDisk);
+        if ($token === null || $token === '') {
+            throw new FixtureException('LocalAssetStore::store() returned a local reference with no token.');
         }
 
         $asset = self::unsavedAsset($mime, $bytes, $filename);
