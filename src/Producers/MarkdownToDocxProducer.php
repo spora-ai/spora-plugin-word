@@ -16,18 +16,7 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
 /**
  * Renders a Markdown asset into a Word document as a media derivative.
  *
- * This is the *binary re-render* half of the plugin: the output is an
- * artifact a user downloads, not text the LLM reads. The other half —
- * DOCX → Markdown — is {@see DocxToMarkdownProducer},
- * and both sit on the same contract: a `.docx` extract is a Markdown
- * derivative, and that derivative is a legal parent here, so the round trip
- * an agent walks stays inside one interface.
- *
- * The producer receives the already-resolved {@see MediaAsset} straight from
- * `MediaDerivativeService`, which has done the ownership check, so it reads
- * the payload off the row through {@see WordSourceBytes} rather than going
- * through `MediaAssetReader` — that service is id-based and would repeat (and
- * re-interpret) the check.
+ * Reads through {@see WordSourceBytes}, not the id-based `MediaAssetReader`.
  *
  * Idempotency is delegated to `MediaDerivativeService::createFromRequest()`,
  * which keys on `(parent_id, format, producer_plugin, producer_operation)`.
@@ -43,11 +32,6 @@ final class MarkdownToDocxProducer implements MediaDerivativeProducerInterface
      * so a row whose MIME sniff came back unhelpful can still be resolved by
      * its filename. Claiming `text/plain` as well would make every text asset
      * in the archive convertible, which is a different decision.
-     *
-     * The two bare extensions are invisible to `MediaAllowedTypesService`,
-     * which unions only the entries containing a `/` — dropping them from the
-     * LLM-facing `"Allowed: %s"` string is core's filter, not a change to
-     * this shape, so the return type stays a mixed list.
      *
      * @var list<string>
      */

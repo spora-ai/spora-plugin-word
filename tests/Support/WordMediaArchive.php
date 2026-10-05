@@ -34,17 +34,8 @@ use Symfony\Component\HttpClient\MockHttpClient;
 /**
  * Wires the media-archive object graph this plugin plugs into.
  *
- * Everything here is built by a **real** `DI\Container` from definitions
- * equivalent to core's `ContainerDefinitions`, not by hand-assembled mocks.
- * One contract only holds when the graph is genuinely resolved rather than
- * stubbed: `MediaDerivativeService::findProducer()` instantiates each
- * registered producer *through the container* (which is why a plugin
- * producer may take constructor arguments at all).
- *
- * A fresh container per call rather than a shared static: the registries
- * `Pest.php` resets in `afterEach` are process-global, and a container
- * cached across tests would keep serving producers built from a previous
- * test's registrations.
+ * A **real** `DI\Container`, not mocks: `findProducer()` instantiates each producer
+ * *through* it, which is what lets one take arguments. Fresh per call.
  */
 final class WordMediaArchive
 {
@@ -99,22 +90,10 @@ final class WordMediaArchive
                 self::DB_MODE_CEILING,
             )),
 
-            // Autowired, not hand-constructed with a positional argument
-            // list. `MediaArchiveIngestPipeline` is core's class and its
-            // constructor is a moving target: naming each dependency here
-            // would pin this harness to one core revision and break the
-            // moment core shifts a slot, over a class this plugin does not
-            // own. Every collaborator the pipeline needs is either defined
-            // above or autowirable, and `WordPlugin` relies on exactly this
-            // — `\DI\autowire()` — to wire its own producers.
+            // Autowired: the ingest pipeline is core's class and a moving target.
             MediaArchiveIngestPipeline::class => \DI\autowire(),
             MediaArchiveService::class         => \DI\autowire(),
-            // A definition, so the autowired ingest pipeline receives this
-            // same instance. Producer resolution walks a process-global
-            // discovery registry either way, but a test that reached the
-            // service two different ways should be reaching one graph — which
-            // is what core's own container builds, definitions being shared
-            // by default.
+            // A definition, so the autowired pipeline gets this same instance.
             MediaDerivativeService::class => \DI\factory(
                 static fn(ContainerInterface $c): MediaDerivativeService => new MediaDerivativeService(
                     $c->get(AssetStore::class),
@@ -171,8 +150,7 @@ final class WordMediaArchive
 
     /**
      * The chat-input half: a user drops a `.docx` into the composer and the
-     * archive is expected to accept it and let the DOCX→Markdown producer
-     * extract its text.
+     * archive is expected to accept it and let the extract producer read it.
      */
     public static function ingestDocxUpload(
         ContainerInterface $container,
@@ -200,9 +178,7 @@ final class WordMediaArchive
     }
 
     /**
-     * The same unsaved `data_url` row, typed as the Word MIME. The extract
-     * producer's unit tests want a parent the resolver would actually route
-     * here, without the cost of a real upload.
+     * {@see self::dataUrlAsset()} with the Word MIME the resolver would route here.
      */
     public static function docxAsset(string $docx, string $filename = 'report.docx'): MediaAsset
     {
@@ -238,8 +214,6 @@ final class WordMediaArchive
     }
 
     /**
-     * The `local` twin of {@see self::docxAsset()}.
-     *
      * @return array{asset: MediaAsset, store: LocalAssetStore}
      */
     public static function localDocxAsset(
@@ -266,21 +240,11 @@ final class WordMediaArchive
     }
 
     /**
-     * Write `$bytes` to disk through the host's own {@see LocalAssetStore} and
-     * hand back a `local`-mode row that resolves to the same file.
+     * The row comes from the reference `store()` returns: `readFromAsset()` resolves
+     * `<token>.<ext>` from the MIME alone, a table the host owns.
      *
-     * The row is built from the reference `store()` returns, not from a name
-     * this file constructs. `readFromAsset()` resolves `<token>.<ext>` from
-     * the row's MIME alone, and that mime → ext table belongs to the host:
-     * re-deriving it here duplicated a decision this fixture does not own, and
-     * went stale the moment core taught the table a MIME the plugin was
-     * already using.
-     *
-     * `$filename` is deliberately not handed to `store()` — that argument's
-     * extension wins over the MIME, while `readFromAsset()` has no filename to
-     * offer, so passing one would make the writer and the reader disagree.
-     * It still names the row, which is what the resolver's extension fallback
-     * and the UI read.
+     * `$filename` is deliberately not passed to `store()`: its extension wins over
+     * the MIME and `readFromAsset()` has none to offer. It still names the row.
      *
      * @return array{asset: MediaAsset, store: LocalAssetStore}
      */

@@ -46,16 +46,8 @@ it('registers both producers and the refiner on boot', function () {
 });
 
 /**
- * The registration half, pinned at the source level.
- *
- * `class_exists()` would be the obvious check and it is the wrong one: the
- * plugin's classmap still carries a deleted path until `composer
- * dump-autoload` runs, so it raises a file-include warning instead of
- * answering. Asking the discovery registry for its list would work, but that
- * class is exactly what the core this PR merges after deletes — a test that
- * fatals on the host it is written for is worse than no test. Reading the
- * listener's own body is version-independent, and it is the same approach the
- * refiner-guard test below takes.
+ * Pinned at the source level: `class_exists()` warns on a stale classmap entry, and
+ * `MediaConverterDiscovery::all()` is the class core's cut deletes.
  */
 it('never reaches for the converter discovery this plugin no longer uses', function () {
     $method = new ReflectionMethod(WordPlugin::class, 'onContainerBuilding');

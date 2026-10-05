@@ -17,17 +17,10 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 
 beforeEach(function () {
-    // `WordPlugin::onContainerBuilding()` does this at boot; the test
-    // registers by hand so the chain is exercised without a kernel. The
-    // producers are then resolved *through the container* by
-    // `MediaDerivativeService::findProducer()`, which is the only thing that
-    // makes a plugin producer with constructor arguments work at all.
     DeprecationFilter::silencePhpWord();
     MediaDerivativeProducerDiscovery::add(MarkdownToDocxProducer::class);
     MediaDerivativeProducerDiscovery::add(DocxToMarkdownProducer::class);
-    // Production registers this too, and it is what types a `.docx` before
-    // the upload allowlist runs on a host whose libmagic reports every
-    // OOXML package as a bare zip.
+    // Production registers this too: it types a `.docx` before the allowlist runs.
     MediaMimeRefinerDiscovery::add(WordDocxMimeRefiner::class);
 });
 
@@ -132,16 +125,6 @@ it('cleans the join row up when the parent asset is deleted', function () {
         ->and($derivatives->parentOf($derivative->id))->toBeNull();
 });
 
-/**
- * The read direction, end to end and through the real ingest pipeline: a
- * `.docx` an operator drops into the chat is accepted, and the text the
- * model ends up reading is the `md` derivative this plugin mints.
- *
- * The upload half is asserted because it is the only thing keeping `.docx`
- * in `MediaAllowedTypesService`'s allowlist — the producer's declared source
- * MIME *is* the allowlist entry — and because the refiner is what makes the
- * accept work on a libmagic that calls every OOXML package a bare zip.
- */
 it('extracts a docx upload into an md derivative the archive can serve', function () {
     $container   = WordMediaArchive::container();
     $derivatives = WordMediaArchive::derivativeService($container);
@@ -159,17 +142,12 @@ it('extracts a docx upload into an md derivative the archive can serve', functio
         ->and($derivative->media_type)->toBe('document')
         ->and((int) $derivative->byte_size)->toBeGreaterThan(0);
 
-    // Structure, not just "non-empty": an extractor that flattened the
-    // document to a single paragraph would satisfy a length check and hand
-    // the model something with no headings, lists or table to reason about.
     $markdown = (string) $derivative->payload;
     expect($markdown)->toContain('# Quarterly report')
         ->and($markdown)->toContain('Revenue grew **12%** against a flat market.')
         ->and($markdown)->toContain('- North grew')
         ->and($markdown)->toContain('| **Region** | **Total** |');
 
-    // Attribution is what makes this row findable as *this* plugin's work
-    // rather than another row that happens to be Markdown.
     $join = Capsule::table('media_derivatives')->where('parent_id', $parent->id)->first();
     expect($join)->not->toBeNull()
         ->and($join->derivative_id)->toBe($derivative->id)
@@ -178,14 +156,6 @@ it('extracts a docx upload into an md derivative the archive can serve', functio
         ->and($join->producer_operation)->toBe('word.extract');
 });
 
-/**
- * The two registrations, meeting.
- *
- * A `.docx` becomes an `md` derivative, and that derivative is a legal parent
- * for a `.docx` one — the render producer declares `text/markdown` as a
- * source, so the resolver routes it without any rewiring. If either half's
- * declared source formats drift, this is where it shows.
- */
 it('chains a docx into an md derivative and back into a docx derivative', function () {
     $container   = WordMediaArchive::container();
     $derivatives = WordMediaArchive::derivativeService($container);
@@ -195,18 +165,10 @@ it('chains a docx into an md derivative and back into a docx derivative', functi
     $docx   = $derivatives->createFromRequest($md, 'docx');
 
     expect($docx->mime_type)->toBe(WordConversion::DOCX_MIME)
-        // `filenameFor()` drops the parent's extension before appending the
-        // format, so the second generation is `report.docx` — the same name
-        // the first upload had, and deliberately so: the natural key is what
-        // keeps the two apart, not a filename suffix.
+        // `filenameFor()` drops the parent extension, so the second generation repeats the name.
         ->and($docx->filename)->toBe('report.docx')
         ->and(substr((string) $docx->payload, 0, 2))->toBe('PK');
 
-    // Three rows — the upload, its `md` extract, and the `docx` rendered
-    // from that extract — and two join rows naming which producer made each.
-    // A chain that had re-used the *original* upload as the docx's parent
-    // would leave a second download card with no join row explaining it, so
-    // the count is the assertion, not decoration.
     expect(MediaAsset::query()->count())->toBe(3)
         ->and(Capsule::table('media_derivatives')->count())->toBe(2)
         ->and($derivatives->parentOf($md->id))->toBe($parent->id)
@@ -215,35 +177,18 @@ it('chains a docx into an md derivative and back into a docx derivative', functi
         ->toBe(['word.extract']);
 });
 
-/**
- * The extension fallback behind {@see WordDocxMimeRefiner}, asserted through
- * the resolver that actually consumes it.
- *
- * `findProducer()` matches a parent's MIME first and its filename extension
- * second, so a row that arrived as a coarse `application/zip` still reaches
- * the extract producer on the strength of a `.docx` filename. This is the
- * path that keeps a DOCX working on a host whose libmagic never names the
- * format — the same host class the refiner exists to rescue one step
- * earlier.
- */
 it('resolves a docx parent whose mime came back as a coarse zip', function () {
     $container   = WordMediaArchive::container();
     $derivatives = WordMediaArchive::derivativeService($container);
 
-    // A zip that carries no `word/document.xml`, so the refiner declines it
-    // and the row really does keep the coarse verdict — which is the state a
-    // mis-sniffed DOCX lands in when the refiner is not registered or a host
-    // has no refiner seam at all.
+    // No `word/document.xml`, so the refiner declines and the row keeps the coarse verdict.
     $parent = WordMediaArchive::ingestDocxUpload(
         $container,
         DocxFixtures::zipContaining(['notes.txt' => 'a plain archive']),
         'report.docx',
     );
 
-    // The bytes are not a readable document, so what is being pinned here is
-    // the *routing*: the source list resolves the row on its `.docx`
-    // extension, and the conversion then fails loudly rather than the request
-    // reporting "no producer supports md for this asset".
+    // What is pinned is the *routing*: it resolves on the extension, then fails loudly.
     expect($parent->mime_type)->toBe(DocxFixtures::ZIP_MIME);
 
     $caught = null;
@@ -255,8 +200,6 @@ it('resolves a docx parent whose mime came back as a coarse zip', function () {
 
     expect($caught)->toBeInstanceOf(WordDocumentException::class);
 
-    // And the mime-matched row resolves on the MIME alone, which is the half
-    // that keeps the upload gate working.
     $docx = WordMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
     $md   = $derivatives->createFromRequest($docx, 'md');
     expect($md->mime_type)->toBe('text/markdown');

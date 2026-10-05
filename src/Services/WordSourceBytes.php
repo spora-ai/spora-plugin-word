@@ -12,16 +12,7 @@ use Spora\Services\DatabaseAssetStore;
 use Spora\Services\LocalAssetStore;
 
 /**
- * The single place both producers read a parent asset's bytes.
- *
- * A sibling of {@see WordConversion} for the same reason: the scoped
- * `set_error_handler` around the disk read must not exist in two copies that
- * could interleave and pop each other's frame, and both storage modes have to
- * produce one emptiness check and one failure message.
- *
- * Reads go through the archive's own asset stores rather than off
- * `$asset->payload` directly, so `data_url` and `local` resolve the same way
- * {@see \Spora\Services\MediaArchive\Producers\ImageDerivativeProducer} does.
+ * The one place both producers read a parent asset's bytes, through the stores.
  */
 final class WordSourceBytes
 {
@@ -31,13 +22,10 @@ final class WordSourceBytes
     ) {}
 
     /**
-     * @param string $producer short class name of the caller, so a failure
-     *        names the seam it reached through rather than this helper.
+     * @param string $producer short class name, so a failure names the calling seam.
      *
-     * @throws WordRuntimeException     when the row holds no materialised
-     *         bytes, or when the archive's store cannot produce them.
-     * @throws WordDocumentException    when a local file is on disk but
-     *         unreadable.
+     * @throws WordRuntimeException  when the row holds no materialised bytes.
+     * @throws WordDocumentException when a local file is on disk but unreadable.
      */
     public function read(MediaAsset $asset, string $producer): string
     {
@@ -82,9 +70,9 @@ final class WordSourceBytes
             $producer,
         );
 
-        // PHP 8.4+ no longer honours `@` for `file_get_contents`, so the
-        // explicit handler is what turns an unreadable file into a clean
-        // failure. Same pattern as ImageDerivativeProducer::readLocalBytes().
+        // Load-bearing: PHP 8.4+ no longer honours `@` here, so this handler is what
+        // turns an unreadable file into a clean failure — and it must be paired, or a
+        // second copy (see WordConversion) pops its frame.
         set_error_handler(static fn(): bool => true, E_WARNING);
         try {
             $bytes = file_get_contents($file['path']);
@@ -101,11 +89,8 @@ final class WordSourceBytes
             ));
         }
 
+        // No free emptiness check here as in `readDatabaseBytes()`.
         if ($bytes === '') {
-            // The emptiness check `readDatabaseBytes()` gets for free from
-            // comparing against `''` has to be spelled out here: without it
-            // a zero-byte local file renders as an empty document instead
-            // of raising the same failure as its data_url twin.
             throw new WordRuntimeException(sprintf(
                 '%s: asset %s has an empty local file',
                 $producer,
@@ -117,15 +102,9 @@ final class WordSourceBytes
     }
 
     /**
-     * Both stores signal "this asset has no bytes you can read" with
-     * {@see AssetStorageException} — a legacy data_url row with a null
-     * payload, a missing `asset_token`, a file deleted out from under the row.
-     * Left alone it escapes as a `RuntimeException` from `Spora\Services`,
-     * which breaks the promise that callers only ever see
-     * `WordRuntimeException`.
+     * Both stores signal "no bytes" with {@see AssetStorageException}, not ours.
      *
-     * @param callable(): array{path?: string, length?: int, bytes?: string} $read
-     *
+     * @param  callable(): array{path?: string, length?: int, bytes?: string} $read
      * @return array{path?: string, length?: int, bytes?: string}
      */
     private function mappedRead(callable $read, MediaAsset $asset, string $producer): array

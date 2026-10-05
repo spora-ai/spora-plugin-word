@@ -24,11 +24,7 @@ final class DocxFixtures
     /**
      * `libmagic`'s verdict for a bare zip, and the coarse MIME
      * {@see \Spora\Plugins\Word\Refiners\WordDocxMimeRefiner} exists to
-     * promote. Every test that drives the refiner, or that asserts the
-     * extract producer refuses to claim the container type, needs this exact
-     * string — and it is not the plugin's own constant to import: it is a
-     * property of the archive format, which is why it lives here rather than
-     * in `src/`.
+     * promote. A property of the archive format, so it lives here rather than in `src/`.
      */
     public const ZIP_MIME = 'application/zip';
 
@@ -112,9 +108,7 @@ final class DocxFixtures
 
     /**
      * A `.docx` cut short after its first entries: `finfo` still names it a
-     * Word document from the local file header, so it reaches the extract
-     * producer and fails there — the case that must degrade to no extracted
-     * text rather than fail the upload.
+     * Word document from its local file header, so it reaches the extract producer.
      */
     public static function truncatedDocx(): string
     {

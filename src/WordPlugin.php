@@ -29,16 +29,8 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  *
  * Architectural invariants:
  *
- *   - **Two of the three registrations share a seam, and the third does
- *     not.** Both producers mint derivatives — the extract half the chat
- *     reads, the render half the user downloads — so they are registered with
- *     the same discovery call and an `md` extract is a legal `docx` parent
- *     because of what they declare, not because of any extra wiring. The
- *     refiner is the separate seam: it runs *before* the upload allowlist so
- *     a DOCX on an old libmagic is typed correctly before anything rejects
- *     it. Registering the producers without the refiner, or the refiner
- *     without the producers, leaves a silently half-working plugin rather
- *     than an error.
+ *   - **The two producers share a seam; the refiner is its own.** Registering
+ *     one half of either pair leaves a silently half-working plugin.
  *
  *   - **Discovery calls run on every boot by design.** The registries are
  *     in-process statics that reset between tests, and `add()` no-ops on an
