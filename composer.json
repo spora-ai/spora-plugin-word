@@ -4,18 +4,6 @@
     "type": "spora-plugin",
     "license": "MIT",
     "keywords": ["spora", "plugin", "word", "docx", "markdown", "media-derivatives", "document-generation"],
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../spora-core",
-            "options": {
-                "symlink": true,
-                "versions": {
-                    "spora-ai/spora-core": "0.30.0"
-                }
-            }
-        }
-    ],
     "require": {
         "php": "^8.4.1",
         "ext-zip": "*",
@@ -59,9 +47,6 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "spora-ai/installer": true
-        },
-        "preferred-install": {
-            "spora-ai/spora-core": "source"
         }
     },
     "minimum-stability": "dev",

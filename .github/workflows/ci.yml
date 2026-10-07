@@ -12,6 +12,16 @@ name: CI
 # no job passes `--ignore-platform-req` — a runner that lost `gd` should fail
 # in the first second with "the extension is missing", not 200 lines into a
 # test with a message that says nothing about the environment.
+#
+# Every job installs with `composer update spora-ai/spora-core
+# --with-all-dependencies`, not `composer install`. While composer.json carried
+# a temporary `path` repository pointing at a sibling core checkout, that entry
+# pinned the package to 0.30.0 in `options.versions` regardless of which ref sat
+# in it — so a green run proved only that the plugin worked against an arbitrary
+# core working tree, not against the declared floor. Resolving `>=0.30.0 <2.0.0`
+# against the published release is what makes a green run mean the declared
+# constraint is actually satisfiable. The `integration` job applies the same
+# principle: it requires core from Packagist instead of pinning a sibling clone.
 
 on:
   push:
@@ -23,33 +33,6 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  # `MediaMimeRefinerInterface` is not in a tagged spora-core release yet — it
-  # ships with core PR #282 ("a create_media operation, a document embed, and a
-  # MIME-refiner seam"), which is merged: the seam is on core's `main`, and not
-  # in the newest tag either (v0.29.0 predates it). composer.json therefore
-  # still resolves spora-core through a `path` repository, with the version
-  # pinned in `options.versions` so the constraint is stable whichever ref is
-  # checked out. Once core tags the release carrying the seam, this entry is
-  # deleted and spora-core resolves from Packagist like every other plugin.
-  #
-  # This was `feat/media-file-card-and-create-media`, the branch #282 merged
-  # from, and the branch no longer exists: every job that checks core out at
-  # this ref failed on `git fetch` of a deleted ref, which took `test` — and
-  # with it the `sonarcloud` job that `needs: test` — down with it. `main` is
-  # the ref the merged result lives on, so it is what the plugin tests against.
-  # A moving target, yes; a SHA pin would be tighter but would need a manual
-  # bump for every core fix this plugin is meant to inherit, and the seam
-  # argument applies to a commit just as much as to a branch.
-  #
-  # `actions/checkout`'s `path:` is workspace-relative, so the core checkout
-  # lands *inside* this repo's workspace while the path repository is declared
-  # as `../spora-core` — a sibling, which is what local development has. Every
-  # job that runs `composer install` therefore symlinks the checkout to the
-  # sibling location first; without it all four of them fail with
-  # `Source path "../spora-core" is not found`.
-  SPORA_CORE_REF: main
 
 jobs:
   test:
@@ -87,18 +70,8 @@ jobs:
         run: |
           php -r 'foreach (["zip", "dom", "mbstring", "gd"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "missing required extension: $e\n"); exit(1); } } echo "all required extensions loaded\n";'
 
-      - name: Checkout spora-core (path repository)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: spora-ai/spora-core
-          ref: ${{ env.SPORA_CORE_REF }}
-          path: spora-core
-
-      - name: Link spora-core to the sibling path the lock expects
-        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
-
-      - name: Composer install
-        run: composer install --no-interaction --prefer-dist
+      - name: Composer update
+        run: composer update spora-ai/spora-core --with-all-dependencies --no-interaction --prefer-dist
 
       - name: Run Pest
         # PHP 8.4 also produces the coverage report + JUnit XML so the
@@ -148,18 +121,8 @@ jobs:
       # four extensions above this install fails on a platform requirement
       # rather than on anything the code did. Hence no
       # `--ignore-platform-req` here (unlike typst's job).
-      - name: Checkout spora-core (path repository)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: spora-ai/spora-core
-          ref: ${{ env.SPORA_CORE_REF }}
-          path: spora-core
-
-      - name: Link spora-core to the sibling path the lock expects
-        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
-
-      - name: Composer install
-        run: composer install --no-interaction --prefer-dist
+      - name: Composer update
+        run: composer update spora-ai/spora-core --with-all-dependencies --no-interaction --prefer-dist
 
       - name: Run PHPStan
         run: ./vendor/bin/phpstan analyse --no-progress --memory-limit=512M
@@ -179,18 +142,8 @@ jobs:
           coverage: none
           tools: composer
 
-      - name: Checkout spora-core (path repository)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: spora-ai/spora-core
-          ref: ${{ env.SPORA_CORE_REF }}
-          path: spora-core
-
-      - name: Link spora-core to the sibling path the lock expects
-        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
-
-      - name: Composer install
-        run: composer install --no-interaction --prefer-dist
+      - name: Composer update
+        run: composer update spora-ai/spora-core --with-all-dependencies --no-interaction --prefer-dist
 
       - name: Check code style
         # Same ruleset as Spora core's .php-cs-fixer.php so plugin style matches host.
@@ -211,14 +164,6 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Checkout spora-core
-        # Sibling clone — composer path repos reference it via
-        # absolute paths from the skeleton's `composer.json`.
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: spora-ai/spora-core
-          path: spora-core
-
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2.37.2
         with:
@@ -229,11 +174,11 @@ jobs:
 
       - name: Bootstrap skeleton
         run: |
-          # Throwaway composer project that requires spora-core + this
-          # plugin as path repos. Mirrors spora-local/composer.json so
-          # the verification reflects the real operator wiring. Uses
-          # absolute paths so the path repos resolve regardless of
-          # the step's working directory.
+          # Throwaway composer project that requires spora-core from
+          # Packagist plus this plugin as a path repo. Mirrors
+          # spora-local/composer.json so the verification reflects the real
+          # operator wiring. The plugin path repo uses an absolute path so it
+          # resolves regardless of the step's working directory.
           mkdir -p /tmp/skeleton && cd /tmp/skeleton
           composer init --name=spora/test-skeleton --type=project --no-interaction --quiet
           composer config minimum-stability dev
@@ -241,24 +186,21 @@ jobs:
           composer config allow-plugins.pestphp/pest-plugin true
           composer config allow-plugins.spora-ai/installer true
           composer config allow-plugins.composer/installers true
-          # The core path repo pins its version in `options.versions`, which
-          # the plain `composer config repositories.<name> path <url>` form
-          # cannot express. Without the pin composer reads an untagged
-          # checkout as `dev-main`, and the plugin's `>=0.30.0` floor — which
-          # is real, because it hard-requires MediaMimeRefinerInterface —
-          # rejects it. composer.json's own `repositories` entry pins the same
-          # way for local development; both go away once core tags the release.
-          composer config repositories.spora-core '{"type":"path","url":"'"$GITHUB_WORKSPACE"'/spora-core","options":{"symlink":true,"versions":{"spora-ai/spora-core":"0.30.0"}}}'
           composer config repositories.word path "$GITHUB_WORKSPACE"
 
       # No platform-requirement skip here either: the four extensions are
       # installed above, and a platform-requirement failure is exactly the
       # signal this job exists to catch.
+      #
+      # core is required as `^0.30` rather than `@dev`: the tagged release
+      # carries the MediaMimeRefinerInterface this plugin hard-requires, so
+      # booting against the published package is a stronger check than
+      # booting against whichever commit core's default branch happens to be on.
       - name: Install skeleton + spora-core + plugin
         working-directory: /tmp/skeleton
         run: |
           composer require --no-interaction \
-            spora-ai/spora-core:@dev \
+            "spora-ai/spora-core:^0.30" \
             spora-ai/installer:^1.5 \
             "spora-ai/spora-plugin-word:*@dev" 2>&1 | tail -30
 
@@ -337,18 +279,8 @@ jobs:
           coverage: pcov
           tools: composer
 
-      - name: Checkout spora-core (path repository)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: spora-ai/spora-core
-          ref: ${{ env.SPORA_CORE_REF }}
-          path: spora-core
-
-      - name: Link spora-core to the sibling path the lock expects
-        run: ln -sfn "$GITHUB_WORKSPACE/spora-core" "$GITHUB_WORKSPACE/../spora-core"
-
-      - name: Install
-        run: composer install --no-interaction --prefer-dist
+      - name: Composer update
+        run: composer update spora-ai/spora-core --with-all-dependencies --no-interaction --prefer-dist
 
       - name: Download coverage report
         # The Pest job writes coverage/clover.xml + coverage/junit.xml

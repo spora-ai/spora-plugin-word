@@ -70,12 +70,16 @@ Prefer enabling the extension. The flag exists for the host where you cannot.
 
 The real requirement is the `Spora\Services\MediaArchive\MediaMimeRefinerInterface`
 seam — the third registry below — which `composer.json` expresses as
-`spora-ai/spora-core >=0.30.0`. Until core tags a release carrying that seam,
-`composer.json` resolves spora-core through a `path` repository pointing at
-`../spora-core`, with the version pinned in `options.versions` so the constraint
-stays stable whichever branch is checked out. CI checks spora-core out and
-symlinks it to the sibling path before installing; see the comment at the top
-of `.github/workflows/ci.yml`. Both go away once core tags the release.
+`spora-ai/spora-core >=0.30.0`. Core `v0.30.0` is tagged and indexed on
+Packagist, so spora-core resolves from Packagist like every other plugin.
+Install it the usual way:
+
+```bash
+composer require spora-ai/spora-plugin-word
+```
+
+A host running core older than `v0.30.0` has no `MediaMimeRefinerInterface` and
+must upgrade core.
 
 `WordPlugin::onContainerBuilding()` checks `interface_exists()` at boot and
 throws `PluginLoadFailedException` naming the missing seam when the host's core
