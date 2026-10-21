@@ -94,15 +94,16 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
     }
 
     /**
+     * `ZipArchive::open()` takes a path, so the payload has to exist on disk to
+     * be opened at all — which is the only reason this method exists. It is
+     * separate from {@see self::isWordPackage()} so the decision reads as a
+     * decision instead of as bail-out branches interleaved with temp-file
+     * bookkeeping.
+     *
      * @param callable(string): bool $inspect
      */
     private function withStagedArchive(string $bytes, callable $inspect): bool
     {
-        // `ZipArchive::open()` takes a path, so the payload has to exist on
-        // disk to be opened at all — which is the only reason this method
-        // exists. It is separate from {@see self::isWordPackage()} so the
-        // decision reads as a decision instead of as bail-out branches
-        // interleaved with temp-file bookkeeping.
         $staged = tempnam(sys_get_temp_dir(), 'spora-docx-refine-');
         if ($staged === false) {
             return false;

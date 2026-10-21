@@ -12,7 +12,8 @@ use Spora\Services\MediaArchive\DerivativeOutput;
 use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
 
 /**
- * The read direction: an `md` derivative {@see MarkdownToDocxProducer} accepts back.
+ * The read direction: an `md` derivative {@see MarkdownToDocxProducer} accepts
+ * back.
  *
  * `supportedSourceFormats()` is load-bearing beyond routing — core unions every
  * registered producer's source formats into the upload allowlist and this is the
@@ -24,7 +25,7 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
  * the plugin boots and every `.docx` upload 415s. Full note in README.md.
  *
  * `MediaDerivativeService` keys on `(parent_id, format, producer_plugin,
- * producer_operation)`, so one shared operation name collapses both onto one row.
+ * producer_operation)`, so the operation name is part of the natural key.
  */
 final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
 {

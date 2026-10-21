@@ -8,9 +8,7 @@ use MarkdownWord\Exception\Exception as MarkdownWordException;
 use Throwable;
 
 /**
- * A conversion refused to happen: the source document is unreadable, a part
- * of the archive is malformed, the finished archive could not be reopened, or
- * the input breached one of this plugin's size caps.
+ * A conversion refused to happen.
  *
  * Exists so callers never have to know PHPWord's exception tree —
  * `MarkdownWord\Exception\Exception` is the package's documented single-catch
@@ -27,8 +25,8 @@ final class WordDocumentException extends WordRuntimeException
 
     /**
      * Wrap a `MarkdownWord\Exception\Exception` with the operation that
-     * provoked it. Keeping the sentence here rather than at each of the four
-     * call sites means every mapped failure reads the same way.
+     * provoked it. Keeping the sentence here rather than at each call site
+     * means every mapped failure reads the same way.
      */
     public static function fromMarkdownWord(string $operation, MarkdownWordException $previous): self
     {

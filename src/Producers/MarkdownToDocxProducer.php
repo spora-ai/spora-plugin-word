@@ -14,8 +14,6 @@ use Spora\Services\MediaArchive\DerivativeOutput;
 use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
 
 /**
- * Renders a Markdown asset into a Word document as a media derivative.
- *
  * Reads through {@see WordSourceBytes}, not the id-based `MediaAssetReader`.
  *
  * Idempotency is delegated to `MediaDerivativeService::createFromRequest()`,
@@ -52,9 +50,8 @@ final class MarkdownToDocxProducer implements MediaDerivativeProducerInterface
     ) {}
 
     /**
-     * The Composer **package** name, matching what
-     * `spora-plugin-typst`'s producer returns rather than the `plugin.json`
-     * slug.
+     * The unscoped Composer package name — what `spora-plugin-typst`'s producer
+     * returns, not the `plugin.json` slug (`word`).
      */
     public function pluginSlug(): string
     {
@@ -102,8 +99,6 @@ final class MarkdownToDocxProducer implements MediaDerivativeProducerInterface
 
         $docx = $this->conversion->markdownToDocx(
             $this->sourceBytes->read($source, 'MarkdownToDocxProducer'),
-            // `withoutDecoration()` — the one knob v1 puts in the LLM's
-            // hands. See WordConversion::markdownToDocx().
             plain: ($options['plain'] ?? false) === true,
         );
 

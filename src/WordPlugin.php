@@ -20,12 +20,10 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 /**
  * Plugin entry point for `spora-plugin-word`.
  *
- * Contributes three media-archive registrations and the
- * `skills/word-documents/` skill. It contributes **no tools, no routes and no
- * admin app**: the LLM drives both directions through core's existing `media`
- * tool (`create_media` → `create_derivative` to write, an upload to read), so
- * a `word_document` tool would be a second spelling of what the registry
- * already exposes.
+ * Contributes **no tools, no routes and no admin app**: the LLM drives both
+ * directions through core's existing `media` tool (`create_media` →
+ * `create_derivative` to write, an upload to read), so a `word_document` tool
+ * would be a second spelling of what the registry already exposes.
  *
  * Architectural invariants:
  *
@@ -49,15 +47,13 @@ final class WordPlugin extends AbstractPlugin implements EventSubscriberInterfac
     }
 
     /**
-     * Bind the plugin's five classes and register all three media-archive
-     * contributions.
-     *
      * @throws PluginLoadFailedException when the host's spora-core predates the
-     *         refiner seam. Without it the third registration below is a fatal
-     *         on the missing class, which
-     *         `PluginLoader::dispatchWithTolerance()` catches and logs — leaving
-     *         the refiner silently never running, which on an old libmagic is
-     *         the difference between a DOCX upload working and a 415.
+     *         refiner seam. Without the guard the refiner registration is a
+     *         fatal on the missing class, which
+     *         `PluginLoader::dispatchWithTolerance()` catches and logs —
+     *         leaving the refiner silently never running, which on an old
+     *         libmagic is the difference between a DOCX upload working and a
+     *         415.
      */
     public function onContainerBuilding(ContainerBuildingEvent $event): void
     {
@@ -101,26 +97,7 @@ final class WordPlugin extends AbstractPlugin implements EventSubscriberInterfac
     }
 
     /**
-     * Translation catalogues this plugin ships, declared through
-     * {@see \Spora\Plugins\PluginInterface::translationsPaths()}.
-     *
-     * Keys are the English source text — `de.json` reads
-     * `{"…": "…"}`, not `{"description": "…"}`. That is what makes a copy
-     * edit detectable: the key changes and the old entry orphans. The gate
-     * is this plugin's own `LocaleCatalogTest`, not the host's
-     * `i18n:check` — that command harvests core's `app/` and reads core's
-     * `locales/en.json`, so run against a plugin repo it reports every
-     * catalogue key as an orphan.
-     *
-     * **Only operator copy belongs in here.** This plugin ships no tool,
-     * no admin app and no setting — the LLM drives both conversion
-     * directions through core's own `media` tool — so the only operator
-     * copy it owns is the `plugin.json` description the plugins screen
-     * renders. `locales/de.json` holds that one string and nothing else.
-     *
-     * Requires `spora-core >= 0.31.0` for the catalogue to be loaded. On an
-     * older core the host never calls this hook and the plugin renders in
-     * English.
+     * The plugin's `locales/` directory — one `<lang>.json` per language.
      *
      * @return string[]
      */
