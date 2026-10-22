@@ -192,6 +192,35 @@ Note that `fabeat/markdown-word` is a personal-scope Composer package
 (`fabeat/`, not `spora-ai/`). That is fine as a library dependency, but it means
 a fork or a move to the org is a `composer.json` change here.
 
+## Translations
+
+This plugin ships a German catalogue at [`locales/de.json`](locales/de.json),
+declared through `translationsPaths()` in `src/WordPlugin.php`. The host merges
+it under core's own catalogue, so a German install reads the plugin's operator
+copy in German.
+
+The **key is the English source string**, byte for byte — editing the English
+in the source changes the key, so the old entry stops matching and the new
+English has no entry. The gate is this repository's own
+`tests/Unit/LocaleCatalogTest.php`: it fails on an empty translation, on a
+translation identical to its key, and on a key the source no longer produces.
+
+The catalogue holds **one** string: the `plugin.json` description. The plugin
+ships no tool, no admin panel and no setting — the LLM drives both conversion
+directions through core's own `media` tool — so that description is the only
+operator copy it owns.
+
+**Never translated** — these strings are read by the model, so the operator
+sees exactly what the model sees:
+
+- `#[Tool].description`
+- `#[ToolOperation].description`
+- `#[ToolParameter].description`
+- every `#[ToolSetting].label` and its option labels, including the labels of
+  settings that carry `exposeToLlm: true`
+
+See the [plugin author guide → Translations](https://docs.spora-ai.com/develop/plugins/author-guide/translations).
+
 ## Bootstrap
 
 ```bash
@@ -233,6 +262,8 @@ clear is needed between runs.
 .
 ├── composer.json          # spora-ai/spora-plugin-word + fabeat/markdown-word + the four ext-*
 ├── plugin.json            # manifest (class=Spora\Plugins\Word\WordPlugin, slug=word, icon=file-text)
+├── locales/
+│   └── de.json            # German catalogue, keyed by the English source string
 ├── src/
 │   ├── WordPlugin.php                       # entry point — binds DI, registers both discoveries
 │   ├── Producers/

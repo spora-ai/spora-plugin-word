@@ -49,8 +49,7 @@ final class WordConversion
      * Largest number of parts the archive may carry, and how far a `basedOn`
      * style chain is followed. Both kept at the upstream values on purpose:
      * the first is zip-bomb hardening and the second stops a document making
-     * its own style graph a loop. `fabeat/markdown-word`'s own guidance is
-     * explicit that they are not to be relaxed.
+     * its own style graph a loop.
      */
     public const MAX_ARCHIVE_ENTRIES = 4096;
 
@@ -63,8 +62,6 @@ final class WordConversion
     private const PHPWORD_SOURCE_MARKER = '/phpoffice/phpword/';
 
     /**
-     * Render Markdown to the raw bytes of a `.docx`.
-     *
      * `$plain` drops everything this library adds over Word's own styles — the
      * code and link fonts, the quote style, table borders and code-block
      * shading. It is the *only* knob v1 exposes on purpose: the rest of
@@ -94,23 +91,15 @@ final class WordConversion
                 static fn(): string => (new MarkdownToWord(null, $configuration))->toDocx($markdown),
             );
         } catch (MarkdownWordException $e) {
-            // `toDocx()` declares four upstream exceptions and this is the
-            // direction where they actually happen — `FileNotWritable` when
-            // the archive cannot be staged, `UnreadableDocument` when a pass
-            // cannot reopen it, `MalformedDocument` when a part is not XML.
-            // Letting them escape breaks the hierarchy every caller is
-            // promised (`WordRuntimeException` is documented as the base for
-            // everything this plugin reports) and surfaces a vendor class
-            // name to the LLM, which matters most on exactly the
-            // constrained shared hosts the README's platform-requirement
-            // section is written for.
+            // Letting the upstream exceptions escape breaks the hierarchy every
+            // caller is promised (`WordRuntimeException` is documented as the
+            // base for everything this plugin reports) and surfaces a vendor
+            // class name to the LLM.
             throw WordDocumentException::fromMarkdownWord('Rendering the Word document', $e);
         }
     }
 
     /**
-     * Read a `.docx` back into GitHub-Flavored Markdown.
-     *
      * The upstream failures are deliberately not turned into a blank string: they
      * surface as a {@see WordDocumentException} and the caller degrades.
      *
@@ -143,32 +132,25 @@ final class WordConversion
      * PHPWord 1.4's `Style::getStyle()` is called with a null name while
      * writing any paragraph that carries no numbering of its own — every list
      * item, so any real document — and raises
-     * `Using null as an array offset is deprecated`. That is roughly fifteen
-     * notices for a two-paragraph file on PHP 8.5. The output is correct and
+     * `Using null as an array offset is deprecated`. The output is correct and
      * nothing reachable from the library's API avoids it; the package silences
      * it for its own CLI and test harness and documents that embedding leaves
      * it visible. Spora's `Kernel::configureErrorHandling()` routes
-     * `E_DEPRECATED` to the logger at `warning`, so in dev every render would
-     * write fifteen warning lines into `spora.log`.
+     * `E_DEPRECATED` to the logger at `warning`, so every render would write
+     * a warning line per paragraph into `spora.log`.
      *
      * The suppressor is scoped to the exact level and the exact vendor
      * directory: the `E_DEPRECATED` mask stops the callback running for
      * anything else, and the path check stops it hiding a notice raised by
-     * this plugin or by anything else in the same process. Anything the
-     * callback declines is passed to the handler that was displaced — NOT
-     * returned as `false`, which would restore PHP's *built-in* handler and
-     * print raw text straight to the error log instead of reaching Spora's
-     * `Kernel::configureErrorHandling()` and its `warning`-level entry. The
-     * `finally` pops our
-     * frame even when the conversion throws, so a failure cannot leave the
+     * this plugin or by anything else in the same process. The `finally` pops
+     * our frame even when the conversion throws, so a failure cannot leave the
      * suppressor installed for the rest of the worker's life.
      *
-     * Same scoped `set_error_handler` / `restore_error_handler` pairing core
-     * already uses at
-     * `app/Services/MediaArchive/Producers/ImageDerivativeProducer.php:234`
-     * and `app/Services/MediaArchive/MetadataExtractor.php:151`; PHP 8.4 no
-     * longer honours `@` for these calls, so the explicit handler is the only
-     * way to keep a suppressed read from becoming a warning.
+     * PHP 8.4 no longer honours `@` for these calls, so the explicit handler
+     * is the only way to keep a suppressed read from becoming a warning. Core
+     * uses the same scoped pairing in
+     * `app/Services/MediaArchive/Producers/ImageDerivativeProducer.php` and
+     * `app/Services/MediaArchive/MetadataExtractor.php`.
      */
     private function withoutUpstreamPhpWordNotices(Closure $callback): mixed
     {

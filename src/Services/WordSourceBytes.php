@@ -89,7 +89,6 @@ final class WordSourceBytes
             ));
         }
 
-        // No free emptiness check here as in `readDatabaseBytes()`.
         if ($bytes === '') {
             throw new WordRuntimeException(sprintf(
                 '%s: asset %s has an empty local file',
