@@ -291,6 +291,14 @@ jobs:
           name: pest-coverage
           path: coverage
 
+      - name: Record scan start
+        id: scan-start
+        # The guard below accepts only an analysis SonarCloud published
+        # after this moment, so an entry left over from an earlier run of
+        # the same branch or pull request cannot make a broken scan look
+        # successful.
+        run: echo "started-at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
@@ -301,3 +309,83 @@ jobs:
           # passing `--project-base-dir=...` via the args input makes
           # the scanner CLI reject the flag.
           projectBaseDir: ${{ github.workspace }}
+
+      - name: Assert an analysis landed
+        # The scan step above reports "ANALYSIS SUCCESSFUL" even when
+        # SonarCloud throws the report away: with Automatic analysis
+        # enabled on the project, the upload is accepted and no analysis
+        # is published. The job then goes green having measured nothing,
+        # which is the same failure as having no gate at all. This step
+        # asks SonarCloud what it actually stored and fails when the
+        # answer is "nothing".
+        #
+        # A push publishes its analysis on the branch and a pull request
+        # on the pull request, so the two are looked for in different
+        # places. A tag ref never gets an analysis at all — SonarCloud
+        # files the report under refs/tags/<tag> and publishes nothing —
+        # so the guard steps aside for tags.
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SCAN_STARTED_AT: ${{ steps.scan-start.outputs.started-at }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          COMMIT_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          API="https://sonarcloud.io/api"
+          PROJECT_KEY="$(sed -n 's/^sonar\.projectKey=//p' sonar-project.properties | head -1)"
+          DEADLINE=$(( $(date +%s) + 120 ))
+
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "::error::SONAR_TOKEN is empty — the guard cannot ask SonarCloud what it stored."
+            exit 1
+          fi
+
+          if [ -z "$PROJECT_KEY" ]; then
+            echo "::error::sonar.projectKey is missing from sonar-project.properties."
+            exit 1
+          fi
+
+          if [ "$REF_TYPE" = "tag" ]; then
+            echo "Tag push — SonarCloud publishes no analysis for a tag ref, nothing to assert."
+            exit 0
+          fi
+
+          published() {
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+                "$API/project_pull_requests/list?project=$PROJECT_KEY" \
+                | jq --arg pr "$PR_NUMBER" --arg head "$PR_HEAD_SHA" --arg sha "$COMMIT_SHA" --argjson since "$SCAN_STARTED_AT" '
+                    [ .pullRequests[]?
+                      | select(.key == $pr)
+                      | select(.commit != null and (.commit.sha == $head or .commit.sha == $sha))
+                      | select(.analysisDate != null)
+                      | select((.analysisDate | sub("\\+0000$"; "Z") | fromdateiso8601) >= $since)
+                    ] | length'
+            else
+              curl -fsS -H "Authorization: Bearer $SONAR_TOKEN" \
+                "$API/project_analyses/search?project=$PROJECT_KEY&ps=100" \
+                | jq --arg sha "$COMMIT_SHA" '[ .analyses[]? | select(.revision == $sha) ] | length'
+            fi
+          }
+
+          while :; do
+            COUNT="$(published 2>/dev/null || echo 0)"
+            case "$COUNT" in
+              ''|*[!0-9]*) COUNT=0 ;;
+            esac
+            if [ "$COUNT" -gt 0 ]; then
+              echo "SonarCloud published an analysis for $COMMIT_SHA."
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          echo "::error::No analysis for $COMMIT_SHA landed in $PROJECT_KEY. The scan reported success but SonarCloud stored nothing — with Automatic analysis enabled on this project it owns the analyses and discards the CI ones. Turn Automatic analysis off in the SonarCloud project settings."
+          exit 1
