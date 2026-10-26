@@ -294,9 +294,8 @@ jobs:
       - name: Record scan start
         id: scan-start
         # The guard below accepts only an analysis SonarCloud published
-        # after this moment, so an entry left over from an earlier run of
-        # the same branch or pull request cannot make a broken scan look
-        # successful.
+        # after this moment, so a leftover entry from an earlier run cannot
+        # make a broken scan look successful.
         run: echo "started-at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: SonarCloud Scan
@@ -312,18 +311,15 @@ jobs:
 
       - name: Assert an analysis landed
         # The scan step above reports "ANALYSIS SUCCESSFUL" even when
-        # SonarCloud throws the report away: with Automatic analysis
-        # enabled on the project, the upload is accepted and no analysis
-        # is published. The job then goes green having measured nothing,
-        # which is the same failure as having no gate at all. This step
-        # asks SonarCloud what it actually stored and fails when the
-        # answer is "nothing".
+        # SonarCloud throws the report away: with Automatic analysis on the
+        # project, the upload is accepted and no analysis is published — the
+        # job would go green having measured nothing. This step asks
+        # SonarCloud what it stored and fails when the answer is "nothing".
         #
-        # A push publishes its analysis on the branch and a pull request
-        # on the pull request, so the two are looked for in different
-        # places. A tag ref never gets an analysis at all — SonarCloud
-        # files the report under refs/tags/<tag> and publishes nothing —
-        # so the guard steps aside for tags.
+        # A push publishes its analysis on the branch, a pull request on the
+        # pull request, so the two are looked for in different places. A tag
+        # ref never gets an analysis — SonarCloud files it under
+        # refs/tags/<tag> and publishes nothing — so the guard steps aside.
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SCAN_STARTED_AT: ${{ steps.scan-start.outputs.started-at }}
