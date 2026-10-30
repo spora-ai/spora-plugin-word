@@ -194,3 +194,35 @@ it('leaves the error-handler stack balanced on both storage paths', function () 
     // for the rest of the worker's life — silently muting every later error.
     expect($leaked)->toBe(['data_url' => 0, 'local' => 0]);
 });
+
+it('names an asset whose payload is gone', function () {
+    $producer = OfficeMediaArchive::producer(OfficeMediaArchive::container());
+    $asset    = OfficeMediaArchive::dataUrlAsset('a paragraph');
+    $asset->payload = null;
+
+    $caught = null;
+
+    try {
+        $producer->produce($asset, 'docx');
+    } catch (OfficeRuntimeException $e) {
+        $caught = $e;
+    }
+
+    expect($caught)->toBeInstanceOf(OfficeRuntimeException::class)
+        ->and($caught->getMessage())->toContain('cannot read the bytes');
+});
+
+it('names an asset whose payload is empty', function () {
+    $producer = OfficeMediaArchive::producer(OfficeMediaArchive::container());
+
+    $caught = null;
+
+    try {
+        $producer->produce(OfficeMediaArchive::dataUrlAsset(''), 'docx');
+    } catch (OfficeRuntimeException $e) {
+        $caught = $e;
+    }
+
+    expect($caught)->toBeInstanceOf(OfficeRuntimeException::class)
+        ->and($caught->getMessage())->toContain('empty data_url payload');
+});

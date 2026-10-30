@@ -79,6 +79,21 @@ it('answers a theme named by the folder id as well as by its name', function () 
         ->toBe("name: Pinned\n");
 });
 
+it('serves a manifest it cannot read as it is, so the library complains', function () {
+    $library = new FakeMediaLibrary();
+    $library->withTheme(7, 'broken', ['theme.yml' => "name: [unclosed\n"]);
+    $library->withTheme(7, 'list', ['theme.yml' => "- one\n- two\n"]);
+
+    $finder = new MediaLibraryFinder($library, 7, LibraryHalf::Word);
+
+    // A manifest that is not a mapping, or is not YAML at all, is the
+    // library's to complain about — and it complains with better words than
+    // this plugin has. The raw bytes are served so that the complaint is
+    // about the manifest and not about the projection.
+    expect($finder->read('broken/theme.yml', 'theme'))->toBe("name: [unclosed\n")
+        ->and($finder->read('list/theme.yml', 'theme'))->toBe("- one\n- two\n");
+});
+
 it('never answers for another principal', function () {
     $library = new FakeMediaLibrary();
     $library->withTheme(8, 'corporate', ['theme.yml' => "name: Other tenant\n"]);
@@ -134,6 +149,19 @@ it('answers null for a file that is not there', function () {
         ->and($finder->read('nothing.png', 'picture'))->toBeNull()
         ->and($finder->read('nothing', 'document'))->toBeNull()
         ->and($finder->files('nothing'))->toBe([]);
+});
+
+it('answers null for a name no role resolves', function () {
+    $library = new FakeMediaLibrary();
+    $library->withAsset(7, 'logo.png', 'THE PICTURE');
+
+    $finder = new MediaLibraryFinder($library, 7, LibraryHalf::Word);
+
+    // A role the finder does not know is a world it was not given.
+    expect($finder->read('logo.png', 'something-else'))->toBeNull()
+        // An asset is named by its filename, and a filename has no separator
+        // in it.
+        ->and($finder->read('images/logo.png', 'picture'))->toBeNull();
 });
 
 it('never answers a path', function () {
