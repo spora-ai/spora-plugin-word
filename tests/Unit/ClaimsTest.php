@@ -47,6 +47,15 @@ it('tells the operator that the old package has to be removed', function () {
         ->and($readme)->toContain('The two cannot both be installed');
 });
 
+it('says what a picture already inside a document comes back as', function () {
+    $skill = officeSkillText('office-documents');
+
+    // The Word half keeps the reference and the alt text; the file behind it
+    // is never written.
+    expect($skill)->toContain('a file that was never written')
+        ->and($skill)->toContain('media/section_image1.png');
+});
+
 it('says the folder tool needs a core that carries the media-folders feature', function (string $name) {
     $skill = officeSkillText($name);
 

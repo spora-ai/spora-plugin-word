@@ -22,24 +22,6 @@ final class DeckFixtures
     public const PICTURE_NAME = 'logo.png';
 
     /**
-     * The alt text the deck gives the picture. It is the text that must
-     * **not** survive the read-back: the extraction writes no media
-     * directory, so the library leaves the picture out of the extracted deck
-     * altogether — no reference to it and no alt text standing in for it.
-     */
-    public const PICTURE_ALT = 'the house logo';
-
-    /**
-     * A 40×40 red PNG, base64-encoded.
-     *
-     * Written out rather than produced with GD, so the fixture does not
-     * depend on an extension the render itself already needs.
-     */
-    public const PICTURE_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAA'
-        . 'MElEQVRYhe3NAQ0AAAQAMATRP4pYYtjsL/Cc7rhQJ6tYLBaLxWKxWCwWi8VisfhpvDq0AVRMfwL6'
-        . 'AAAAAElFTkSuQmCC';
-
-    /**
      * A deck whose first slide shows a picture.
      */
     public const DECK_WITH_PICTURE = <<<'MARKDOWN'
@@ -53,13 +35,7 @@ final class DeckFixtures
      */
     public static function pictureBytes(): string
     {
-        $bytes = base64_decode(self::PICTURE_PNG_BASE64, true);
-
-        if ($bytes === false) {
-            throw new FixtureException('The picture fixture is not valid base64.');
-        }
-
-        return $bytes;
+        return PictureFixture::bytes();
     }
 
     /**

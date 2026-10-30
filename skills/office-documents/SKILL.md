@@ -268,6 +268,13 @@ written into the document instead, and it comes back as the bare word `Chart`,
 not as an image reference. Any path that is not a readable local file degrades
 the same way, and in a server deployment nearly every path is not one.
 
+**A picture that is already inside the document comes back as an image
+reference to a file that was never written** — `![Chart](media/section_image1.png)`,
+the name being the one Word gave the picture. The extraction writes no media
+directory, so nothing lands on disk and the reference points at nothing. The
+alt text is what tells you a picture was there; the picture itself is not in
+the Markdown.
+
 If the document needs a picture, say what the picture should show in the
 surrounding prose rather than relying on the image surviving. If the user needs
 real images in the file, this pipeline is not the way — render a PDF, or tell

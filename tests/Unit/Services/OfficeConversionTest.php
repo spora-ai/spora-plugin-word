@@ -10,6 +10,7 @@ use Spora\Plugins\Office\Tests\Support\DocxFixtures;
 use Spora\Plugins\Office\Tests\Support\ErrorHandlerStack;
 use Spora\Plugins\Office\Tests\Support\ErrorRecorder;
 use Spora\Plugins\Office\Tests\Support\FakeMediaLibrary;
+use Spora\Plugins\Office\Tests\Support\PictureFixture;
 
 /**
  * Raise one genuine engine-level `E_DEPRECATED` attributed to *this* file.
@@ -358,6 +359,33 @@ it('leaves the pictures out of a deck read back', function () {
     // the picture out of the extracted deck altogether: no reference to a
     // file, and no alt text standing in for it.
     expect($markdown)->not->toContain('![')
-        ->and($markdown)->not->toContain(DeckFixtures::PICTURE_ALT)
+        ->and($markdown)->not->toContain(PictureFixture::ALT)
         ->and($markdown)->toContain('Title slide');
+});
+
+it('reads a document\'s embedded picture back as a reference to no file', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
+
+    $directory = sys_get_temp_dir() . '/spora-office-picture-' . bin2hex(random_bytes(4));
+    $picture  = PictureFixture::writeInto($directory);
+
+    try {
+        // The document's own frontmatter names the base path, so the picture
+        // is embedded the way a document written in Word carries one.
+        $docx = $conversion->markdownToDocx(sprintf(
+            "---\noptions:\n  imageBasePath: %s\n---\n\n# Quarterly report\n\n![%s](logo.png)\n",
+            $directory,
+            PictureFixture::ALT,
+        ));
+    } finally {
+        @unlink($picture);
+        @rmdir($directory);
+    }
+
+    $markdown = $conversion->officeToMarkdown($docx);
+
+    // The Word half keeps the reference and the alt text; the file behind it
+    // is never written, because the extraction names no media directory.
+    expect($markdown)->toContain('![' . PictureFixture::ALT . ']')
+        ->and(is_dir(getcwd() . '/media'))->toBeFalse();
 });
