@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Tests\Support;
+namespace Spora\Plugins\Office\Tests\Support;
 
 /**
  * Silences `phpoffice/phpword`'s deprecations for the duration of a test.

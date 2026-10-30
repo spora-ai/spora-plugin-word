@@ -1,9 +1,9 @@
 {
-    "name": "spora-ai/spora-plugin-word",
-    "description": "Markdown <-> Word (DOCX) conversion for Spora agents — two media-derivatives producers, a MIME refiner, and a bundled skill.",
+    "name": "spora-ai/spora-plugin-office",
+    "description": "Markdown <-> Office documents for Spora agents — Word (DOCX/ODT/RTF) and PowerPoint (PPTX) producers, a MIME refiner, media-library themes, and bundled skills.",
     "type": "spora-plugin",
     "license": "MIT",
-    "keywords": ["spora", "plugin", "word", "docx", "markdown", "media-derivatives", "document-generation"],
+    "keywords": ["spora", "plugin", "office", "word", "docx", "odt", "rtf", "pptx", "powerpoint", "markdown", "media-derivatives", "document-generation"],
     "require": {
         "php": "^8.4.1",
         "ext-zip": "*",
@@ -11,7 +11,9 @@
         "ext-mbstring": "*",
         "ext-gd": "*",
         "spora-ai/spora-core": ">=0.30.0 <2.0.0",
-        "fabeat/markdown-word": "^0.1.0"
+        "markdown-office/markdown-word": "^0.3",
+        "markdown-office/markdown-presentation": "^0.3",
+        "symfony/yaml": "^7.4 || ^8.1"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.94",
@@ -21,16 +23,16 @@
         "phpstan/phpstan-mockery": "^2.0"
     },
     "suggest": {
-        "spora-ai/spora-plugin-media-archive": "Browse, filter, and download the DOCX files this plugin renders."
+        "spora-ai/spora-plugin-media-archive": "Browse, filter, and download the DOCX and PPTX files this plugin renders."
     },
     "autoload": {
         "psr-4": {
-            "Spora\\Plugins\\Word\\": "src/"
+            "Spora\\Plugins\\Office\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Spora\\Plugins\\Word\\Tests\\": "tests/"
+            "Spora\\Plugins\\Office\\Tests\\": "tests/"
         }
     },
     "scripts": {
@@ -46,7 +48,8 @@
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true,
-            "spora-ai/installer": true
+            "spora-ai/installer": true,
+            "cweagans/composer-patches": true
         }
     },
     "minimum-stability": "dev",

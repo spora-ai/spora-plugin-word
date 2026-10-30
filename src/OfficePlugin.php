@@ -2,39 +2,44 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word;
+namespace Spora\Plugins\Office;
 
+use Psr\Container\ContainerInterface;
 use Spora\Events\ContainerBuildingEvent;
 use Spora\Plugins\AbstractPlugin;
 use Spora\Plugins\Exceptions\PluginLoadFailedException;
-use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
-use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
-use Spora\Plugins\Word\Refiners\WordDocxMimeRefiner;
-use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Plugins\Word\Services\WordSourceBytes;
+use Spora\Plugins\Office\Finder\EloquentMediaLibrarySource;
+use Spora\Plugins\Office\Finder\MediaLibrarySource;
+use Spora\Plugins\Office\Producers\MarkdownToOfficeProducer;
+use Spora\Plugins\Office\Producers\MarkdownToPresentationProducer;
+use Spora\Plugins\Office\Producers\OfficeToMarkdownProducer;
+use Spora\Plugins\Office\Producers\PresentationToMarkdownProducer;
+use Spora\Plugins\Office\Refiners\OfficeMimeRefiner;
+use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Services\OfficeSourceBytes;
 use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
- * Plugin entry point for `spora-plugin-word`.
+ * Plugin entry point for `spora-plugin-office`.
  *
  * Contributes **no tools, no routes and no admin app**: the LLM drives both
  * directions through core's existing `media` tool (`create_media` →
- * `create_derivative` to write, an upload to read), so a `word_document` tool
- * would be a second spelling of what the registry already exposes.
+ * `create_derivative` to write, an upload to read), so an `office_document`
+ * tool would be a second spelling of what the registry already exposes.
  *
  * Architectural invariants:
  *
- *   - **The two producers share a seam; the refiner is its own.** Registering
+ *   - **The producers share a seam; the refiner is its own.** Registering
  *     one half of either pair leaves a silently half-working plugin.
  *
  *   - **Discovery calls run on every boot by design.** The registries are
  *     in-process statics that reset between tests, and `add()` no-ops on an
  *     already-registered FQCN, so repeated registration is harmless.
  */
-final class WordPlugin extends AbstractPlugin implements EventSubscriberInterface
+final class OfficePlugin extends AbstractPlugin implements EventSubscriberInterface
 {
     /**
      * @return array<string, string>
@@ -59,7 +64,7 @@ final class WordPlugin extends AbstractPlugin implements EventSubscriberInterfac
     {
         if (!interface_exists(MediaMimeRefinerInterface::class)) {
             throw new PluginLoadFailedException(
-                'spora-plugin-word requires a spora-core that ships '
+                'spora-plugin-office requires a spora-core that ships '
                 . 'Spora\\Services\\MediaArchive\\MediaMimeRefinerInterface. Either upgrade the '
                 . 'host or disable the plugin: on a core without the refiner seam, DOCX uploads '
                 . 'are rejected on hosts whose libmagic reports a .docx as application/zip. Note '
@@ -69,21 +74,33 @@ final class WordPlugin extends AbstractPlugin implements EventSubscriberInterfac
         }
 
         $event->builder()->addDefinitions([
-            WordConversion::class         => \DI\autowire(),
-            WordSourceBytes::class        => \DI\autowire(),
-            MarkdownToDocxProducer::class => \DI\autowire(),
-            DocxToMarkdownProducer::class => \DI\autowire(),
-            WordDocxMimeRefiner::class    => \DI\autowire(),
+            // The one seam the finder reads the media library through. A plugin
+            // cannot widen it: the finder asks for the principal's own rows and
+            // for nothing else.
+            MediaLibrarySource::class => \DI\factory(
+                static fn(ContainerInterface $c): MediaLibrarySource => new EloquentMediaLibrarySource(
+                    $c->get(OfficeSourceBytes::class),
+                ),
+            ),
+            OfficeConversion::class         => \DI\autowire(),
+            OfficeSourceBytes::class        => \DI\autowire(),
+            MarkdownToOfficeProducer::class => \DI\autowire(),
+            OfficeToMarkdownProducer::class => \DI\autowire(),
+            MarkdownToPresentationProducer::class => \DI\autowire(),
+            PresentationToMarkdownProducer::class => \DI\autowire(),
+            OfficeMimeRefiner::class        => \DI\autowire(),
         ]);
 
-        MediaDerivativeProducerDiscovery::add(MarkdownToDocxProducer::class);
-        MediaDerivativeProducerDiscovery::add(DocxToMarkdownProducer::class);
-        MediaMimeRefinerDiscovery::add(WordDocxMimeRefiner::class);
+        MediaDerivativeProducerDiscovery::add(MarkdownToOfficeProducer::class);
+        MediaDerivativeProducerDiscovery::add(OfficeToMarkdownProducer::class);
+        MediaDerivativeProducerDiscovery::add(MarkdownToPresentationProducer::class);
+        MediaDerivativeProducerDiscovery::add(PresentationToMarkdownProducer::class);
+        MediaMimeRefinerDiscovery::add(OfficeMimeRefiner::class);
     }
 
     public function getName(): string
     {
-        return 'Word Documents';
+        return 'Office Documents';
     }
 
     /**

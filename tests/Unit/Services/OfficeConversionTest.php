@@ -3,11 +3,12 @@
 declare(strict_types=1);
 
 use MarkdownWord\Exception\UnreadableDocument;
-use Spora\Plugins\Word\Exceptions\WordDocumentException;
-use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Plugins\Word\Tests\Support\DocxFixtures;
-use Spora\Plugins\Word\Tests\Support\ErrorHandlerStack;
-use Spora\Plugins\Word\Tests\Support\ErrorRecorder;
+use Spora\Plugins\Office\Exceptions\OfficeDocumentException;
+use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Tests\Support\DocxFixtures;
+use Spora\Plugins\Office\Tests\Support\ErrorHandlerStack;
+use Spora\Plugins\Office\Tests\Support\ErrorRecorder;
+use Spora\Plugins\Office\Tests\Support\FakeMediaLibrary;
 
 /**
  * Raise one genuine engine-level `E_DEPRECATED` attributed to *this* file.
@@ -41,15 +42,15 @@ function raiseEngineDeprecation(int $seq): void
  * whole defence against PHPWord's notice flood and there is no public seam
  * onto it; since PHP 8.1 reflection reaches private methods without help.
  */
-function invokeSuppressed(WordConversion $conversion, callable $callback): mixed
+function invokeSuppressed(OfficeConversion $conversion, callable $callback): mixed
 {
-    $method = new ReflectionMethod(WordConversion::class, 'withoutUpstreamPhpWordNotices');
+    $method = new ReflectionMethod(OfficeConversion::class, 'withoutUpstreamPhpWordNotices');
 
     return $method->invoke($conversion, $callback(...));
 }
 
 it('renders markdown into docx bytes', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
 
     $docx = $conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN);
 
@@ -58,9 +59,9 @@ it('renders markdown into docx bytes', function () {
 });
 
 it('reads a rendered document back as github-flavoured markdown', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
 
-    $markdown = $conversion->docxToMarkdown($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN));
+    $markdown = $conversion->officeToMarkdown($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN));
 
     expect($markdown)->toContain('# Quarterly report');
     expect($markdown)->toContain('**12%**');
@@ -70,7 +71,7 @@ it('reads a rendered document back as github-flavoured markdown', function () {
 });
 
 it('drops decoration when plain is requested', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
 
     $decorated = DocxFixtures::partOf($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN), DocxFixtures::STYLES_PART);
     $plain     = DocxFixtures::partOf($conversion->markdownToDocx(DocxFixtures::SAMPLE_MARKDOWN, plain: true), DocxFixtures::STYLES_PART);
@@ -79,8 +80,8 @@ it('drops decoration when plain is requested', function () {
     expect($plain)->not->toContain('IntenseQuote');
 });
 
-it('maps the package exception tree onto WordDocumentException', function () {
-    $conversion = new WordConversion();
+it('maps the package exception tree onto OfficeDocumentException', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
 
     // `$caught` rather than `$this->fail()` inside try/catch: PHPUnit's
     // failure exception derives from AssertionFailedError, which would be
@@ -88,14 +89,14 @@ it('maps the package exception tree onto WordDocumentException', function () {
     $caught = null;
 
     try {
-        $conversion->docxToMarkdown('this is not a zip archive');
-    } catch (WordDocumentException $e) {
+        $conversion->officeToMarkdown('this is not a zip archive');
+    } catch (OfficeDocumentException $e) {
         $caught = $e;
     }
 
     // The upstream exception must survive as `$previous`, or the original
     // wording is lost from every log line the ingest pipeline writes.
-    expect($caught)->toBeInstanceOf(WordDocumentException::class);
+    expect($caught)->toBeInstanceOf(OfficeDocumentException::class);
     expect($caught->getPrevious())->toBeInstanceOf(UnreadableDocument::class);
     expect($caught->getMessage())->toContain('Reading the Word document');
 });
@@ -104,33 +105,33 @@ it('caps the forward direction at 8 MiB and tightens the reverse archive bounds'
     // Tightened from the library's 256 MiB default. The entry and style-depth
     // caps stay at theirs on purpose — they are the zip-bomb and style-loop
     // defences, and the package's guidance is not to relax them.
-    expect(WordConversion::MAX_MARKDOWN_BYTES)->toBe(8 * 1024 * 1024);
-    expect(WordConversion::MAX_PART_BYTES)->toBe(64 * 1024 * 1024);
-    expect(WordConversion::MAX_ARCHIVE_ENTRIES)->toBe(4096);
-    expect(WordConversion::MAX_STYLE_DEPTH)->toBe(32);
+    expect(OfficeConversion::MAX_MARKDOWN_BYTES)->toBe(8 * 1024 * 1024);
+    expect(OfficeConversion::MAX_PART_BYTES)->toBe(64 * 1024 * 1024);
+    expect(OfficeConversion::MAX_ARCHIVE_ENTRIES)->toBe(4096);
+    expect(OfficeConversion::MAX_STYLE_DEPTH)->toBe(32);
 });
 
 it('refuses markdown beyond the ceiling without handing it to the renderer', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
     $recorder   = new ErrorRecorder();
     set_error_handler($recorder, E_ALL);
 
     $caught = null;
 
     try {
-        $conversion->markdownToDocx(str_repeat('a', WordConversion::MAX_MARKDOWN_BYTES + 1));
-    } catch (WordDocumentException $e) {
+        $conversion->markdownToDocx(str_repeat('a', OfficeConversion::MAX_MARKDOWN_BYTES + 1));
+    } catch (OfficeDocumentException $e) {
         $caught = $e;
     } finally {
         restore_error_handler();
     }
 
-    expect($caught)->toBeInstanceOf(WordDocumentException::class);
-    expect($caught->getMessage())->toContain((string) WordConversion::MAX_MARKDOWN_BYTES);
+    expect($caught)->toBeInstanceOf(OfficeDocumentException::class);
+    expect($caught->getMessage())->toContain((string) OfficeConversion::MAX_MARKDOWN_BYTES);
 });
 
 it('swallows the upstream PHPWord deprecation and re-raises everything else', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
     $recorder   = new ErrorRecorder();
     set_error_handler($recorder, E_ALL);
 
@@ -149,7 +150,7 @@ it('swallows the upstream PHPWord deprecation and re-raises everything else', fu
 });
 
 it('lets a deprecation from outside phpoffice/phpword through to the handler below', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
     $recorder   = new ErrorRecorder();
     set_error_handler($recorder, E_ALL);
 
@@ -167,7 +168,7 @@ it('lets a deprecation from outside phpoffice/phpword through to the handler bel
 });
 
 it('pops its error handler once the render is done', function () {
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
     $sentinel   = new ErrorRecorder();
     set_error_handler($sentinel, E_ALL);
 
@@ -192,14 +193,14 @@ it('pops its error handler when the conversion throws', function () {
     // The `finally` in `withoutUpstreamPhpWordNotices()` has to fire on the
     // exception path too, and that is the path a plain happy-path render
     // never takes.
-    $conversion = new WordConversion();
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
     $sentinel   = new ErrorRecorder();
     set_error_handler($sentinel, E_ALL);
 
     try {
         try {
-            $conversion->docxToMarkdown('not a zip');
-        } catch (WordDocumentException) {
+            $conversion->officeToMarkdown('not a zip');
+        } catch (OfficeDocumentException) {
             // The point is the handler stack afterwards, not the throw.
         }
 
@@ -207,4 +208,133 @@ it('pops its error handler when the conversion throws', function () {
     } finally {
         restore_error_handler();
     }
+});
+
+it('draws a document in the theme the media library holds', function () {
+    $library = new FakeMediaLibrary();
+    $library->withTheme(7, 'house', [
+        'theme.yml' => "name: House\n",
+        'styles.yml' => "heading.1:\n  color: \"1A2B3C\"\n",
+    ]);
+
+    $conversion = new OfficeConversion($library);
+
+    $markdown = "---\ntheme: house\n---\n\n# Quarterly report\n\nRevenue grew.\n";
+
+    $styles = DocxFixtures::partOf(
+        $conversion->markdownToDocx($markdown, 7),
+        DocxFixtures::STYLES_PART,
+    );
+
+    // The theme's own colour, and not the one the built-in look uses.
+    expect($styles)->toContain('1A2B3C');
+});
+
+it('draws a document in a theme whose manifest carries the slides half\'s keys', function () {
+    $library = new FakeMediaLibrary();
+
+    // One manifest for both halves: the slides superset. The Word loader
+    // refuses a key it does not know, so the projection is what makes this
+    // one folder serve both.
+    $library->withTheme(7, 'house', [
+        'theme.yml' => "name: House\ndescription: The house theme\nauthor: Ops\n"
+            . "dark: true\ncolors:\n  accent1: \"#4C1D95\"\nfonts:\n  heading: Inter\n",
+        'styles.yml' => "heading.1:\n  color: \"1A2B3C\"\n",
+    ]);
+
+    $conversion = new OfficeConversion($library);
+
+    $markdown = "---\ntheme: house\n---\n\n# Quarterly report\n\nRevenue grew.\n";
+
+    $styles = DocxFixtures::partOf(
+        $conversion->markdownToDocx($markdown, 7),
+        DocxFixtures::STYLES_PART,
+    );
+
+    expect($styles)->toContain('1A2B3C');
+});
+
+it('draws a document in the theme the caller named, not the one in its frontmatter', function () {
+    $library = new FakeMediaLibrary();
+    $library->withTheme(7, 'house', [
+        'theme.yml' => "name: House\n",
+        'styles.yml' => "heading.1:\n  color: \"1A2B3C\"\n",
+    ]);
+    $library->withTheme(7, 'corporate', [
+        'theme.yml' => "name: Corporate\n",
+        'styles.yml' => "heading.1:\n  color: \"4C1D95\"\n",
+    ]);
+
+    $conversion = new OfficeConversion($library);
+
+    $markdown = "---\ntheme: house\n---\n\n# Quarterly report\n\nRevenue grew.\n";
+
+    $styles = DocxFixtures::partOf(
+        $conversion->markdownToDocx($markdown, 7, 'corporate'),
+        DocxFixtures::STYLES_PART,
+    );
+
+    // The caller's theme answers for the document: the frontmatter's is not
+    // read at all, so the document is drawn in the theme that was named in code.
+    expect($styles)->toContain('4C1D95')
+        ->and($styles)->not->toContain('1A2B3C');
+});
+
+it('refuses a theme that does not resolve', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
+
+    $caught = null;
+
+    try {
+        $conversion->markdownToDocx("# Report\n", 7, 'no-such-theme');
+    } catch (OfficeDocumentException $e) {
+        $caught = $e;
+    }
+
+    expect($caught)->toBeInstanceOf(OfficeDocumentException::class)
+        ->and($caught->getMessage())->toContain('no-such-theme');
+});
+
+it('draws a document with no principal in the theme the library ships', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
+
+    $docx = $conversion->markdownToDocx("# Report\n", null, 'corporate');
+
+    expect(substr($docx, 0, 2))->toBe('PK');
+});
+
+it('renders a deck as the bytes of a pptx', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
+
+    $pptx = $conversion->markdownToPresentation("# Title\n\n---\n\n# Second slide\n");
+
+    expect(substr($pptx, 0, 2))->toBe('PK')
+        ->and(strlen($pptx))->toBeGreaterThan(1000);
+});
+
+it('reads a rendered deck back as the markdown it was written from', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
+
+    $markdown = $conversion->presentationToMarkdown(
+        $conversion->markdownToPresentation("# Title\n\nSome words.\n\n---\n\n# Second slide\n"),
+    );
+
+    expect($markdown)->toContain('Title')
+        ->and($markdown)->toContain('Some words.')
+        ->and($markdown)->toContain('Second slide');
+});
+
+it('refuses a deck that is not a deck', function () {
+    $conversion = new OfficeConversion(new FakeMediaLibrary());
+
+    $caught = null;
+
+    try {
+        $conversion->presentationToMarkdown('this is not a zip archive');
+    } catch (OfficeDocumentException $e) {
+        $caught = $e;
+    }
+
+    expect($caught)->toBeInstanceOf(OfficeDocumentException::class)
+        ->and($caught->getMessage())->toContain('Reading the presentation');
 });

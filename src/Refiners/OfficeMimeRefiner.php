@@ -2,14 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Refiners;
+namespace Spora\Plugins\Office\Refiners;
 
-use Spora\Plugins\Word\Services\WordConversion;
+use Spora\Plugins\Office\Services\OfficeConversion;
 use Spora\Services\MediaArchive\MediaMimeRefinerInterface;
 use ZipArchive;
 
 /**
- * Promotes a coarse `application/zip` sniff to the DOCX MIME.
+ * Promotes a coarse `application/zip` sniff to the MIME of the Office package
+ * it holds.
  *
  * Load-bearing rather than cosmetic. `MimeSniffer::sniffFromBytes()` feeds
  * `finfo_buffer` a 4 KiB prefix, and whether that is enough for libmagic to
@@ -23,8 +24,9 @@ use ZipArchive;
  *
  * The check is a package member lookup, and that is the whole safety
  * argument: `word/document.xml` is what makes an OOXML package a Word
- * document. Claiming every `PK\x03\x04` blob would relabel xlsx, pptx and
- * epub as Word files and corrupt the allowlist for every other format.
+ * document and `ppt/presentation.xml` is what makes one a deck. Claiming every
+ * `PK\x03\x04` blob would relabel xlsx and epub as Office files and corrupt
+ * the allowlist for every other format.
  *
  * No constructor, by contract — `MimeSniffer` instantiates refiners
  * statically so it can keep its own constructor argument-free. Nothing here
@@ -34,13 +36,18 @@ use ZipArchive;
  * bytes that are not a zip at all: the interface promises the refiner is
  * pure, and the sniffer walks the next refiner when it gets a `null`.
  */
-final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
+final class OfficeMimeRefiner implements MediaMimeRefinerInterface
 {
     /**
-     * The part every Word document carries, and the only thing this plugin
+     * The part each Office package carries, and the only thing this plugin
      * claims a package on.
+     *
+     * @var array<string, string>
      */
-    private const DOCUMENT_PART = 'word/document.xml';
+    private const PACKAGE_PARTS = [
+        'word/document.xml'    => OfficeConversion::DOCX_MIME,
+        'ppt/presentation.xml' => OfficeConversion::PPTX_MIME,
+    ];
 
     /**
      * Coarse container types worth opening. `application/octet-stream` is
@@ -48,7 +55,11 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
      * name, and unzipping an arbitrary blob on its say-so would turn every
      * unrecognised upload into a filesystem probe.
      */
-    private const CANDIDATE_SNIFFED_MIMES = ['application/zip', WordConversion::DOCX_MIME];
+    private const CANDIDATE_SNIFFED_MIMES = [
+        'application/zip',
+        OfficeConversion::DOCX_MIME,
+        OfficeConversion::PPTX_MIME,
+    ];
 
     public function refine(string $bytes, ?string $filename, string $sniffedMime): ?string
     {
@@ -56,65 +67,45 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
             return null;
         }
 
-        return $this->isWordPackage($bytes) ? WordConversion::DOCX_MIME : null;
+        return $this->officePackageMime($bytes);
     }
 
     /**
-     * Whether the bytes open as a zip archive carrying `word/document.xml`.
-     *
-     * Both bounds are decided *before* anything reaches the filesystem.
-     *
-     * The size bound matters because this runs inside the upload allowlist
-     * gate — `MediaUploadController::store()` calls `sniffFromBytes()` on the
-     * full body before `checkMimeAllowed()` rejects it — so staging is on the
-     * path for every zip a user ever attaches, declined or not, and staging
-     * doubles peak `/tmp` per request. There is no application-level upload
-     * cap (only PHP's `upload_max_filesize`), so a large body would
-     * otherwise be written out in full only to be thrown away a moment
-     * later. A chat attachment has no reason to approach the
-     * reverse-direction ceiling this plugin already set.
-     *
-     * The entry bound matters because `locateName()` parses the whole central
-     * directory, so a zip bomb's real cost lands in memory here. The upstream
-     * reader this mirrors refuses `numFiles > maxEntries` right after
-     * opening; matching that is what keeps the refiner from being the weaker
-     * of the two defences on the same bytes.
-     *
-     * Opened `RDONLY` — a refiner must never be able to rewrite the archive
-     * it is inspecting — and nothing is ever extracted, so no entry name from
-     * the untrusted archive ever reaches the filesystem as a path.
+     * The MIME of the Office package the bytes hold, or null when they hold
+     * no Office package at all.
      */
-    private function isWordPackage(string $bytes): bool
+    private function officePackageMime(string $bytes): ?string
     {
-        if ($bytes === '' || strlen($bytes) > WordConversion::MAX_PART_BYTES) {
-            return false;
+        if ($bytes === '' || strlen($bytes) > OfficeConversion::MAX_PART_BYTES) {
+            return null;
         }
 
-        return $this->withStagedArchive($bytes, $this->opensAsWordArchive(...));
+        return $this->withStagedArchive($bytes, $this->packageMime(...));
     }
 
     /**
      * `ZipArchive::open()` takes a path, so the payload has to exist on disk to
      * be opened at all — which is the only reason this method exists. It is
-     * separate from {@see self::isWordPackage()} so the decision reads as a
+     * separate from {@see self::officePackageMime()} so the decision reads as a
      * decision instead of as bail-out branches interleaved with temp-file
      * bookkeeping.
      *
-     * @param callable(string): bool $inspect
+     * @param callable(string): ?string $inspect
      */
-    private function withStagedArchive(string $bytes, callable $inspect): bool
+    private function withStagedArchive(string $bytes, callable $inspect): ?string
     {
-        $staged = tempnam(sys_get_temp_dir(), 'spora-docx-refine-');
+        $staged = tempnam(sys_get_temp_dir(), 'spora-office-refine-');
+
         if ($staged === false) {
-            return false;
+            return null;
         }
 
         try {
             if (file_put_contents($staged, $bytes) === false) {
-                return false;
+                return null;
             }
 
-            return $this->mutingArchiveWarnings(static fn(): bool => $inspect($staged));
+            return $this->mutingArchiveWarnings(static fn(): ?string => $inspect($staged));
         } finally {
             if (is_file($staged)) {
                 @unlink($staged);
@@ -127,7 +118,7 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
      * than each on its own: a corrupt central directory warns from the
      * latter, and this class's contract is that it emits nothing.
      */
-    private function opensAsWordArchive(string $path): bool
+    private function packageMime(string $path): ?string
     {
         $archive = new ZipArchive();
 
@@ -136,12 +127,21 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
         // "this is not a zip" — the single most common answer here — into an
         // exception escaping the refiner.
         if ($archive->open($path, ZipArchive::RDONLY) !== true) {
-            return false;
+            return null;
         }
 
         try {
-            return $archive->numFiles <= WordConversion::MAX_ARCHIVE_ENTRIES
-                && $archive->locateName(self::DOCUMENT_PART) !== false;
+            if ($archive->numFiles > OfficeConversion::MAX_ARCHIVE_ENTRIES) {
+                return null;
+            }
+
+            foreach (self::PACKAGE_PARTS as $part => $mime) {
+                if ($archive->locateName($part) !== false) {
+                    return $mime;
+                }
+            }
+
+            return null;
         } finally {
             $archive->close();
         }
@@ -156,7 +156,7 @@ final class WordDocxMimeRefiner implements MediaMimeRefinerInterface
      * window, and `return false` is not the way to delegate either — that
      * restores PHP's *built-in* handler and prints raw text instead of
      * reaching Spora's `Kernel::configureErrorHandling()`.
-     * {@see WordConversion} holds the same rule
+     * {@see OfficeConversion} holds the same rule
      * for the same reason.
      *
      * @template T

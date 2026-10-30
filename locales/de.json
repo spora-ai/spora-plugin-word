@@ -1,3 +1,3 @@
 {
-  "Convert Markdown to Word (.docx) via the media-derivatives abstraction, and read .docx files back as Markdown for the LLM.": "Markdown über die Media-Derivatives-Abstraktion in Word (.docx) konvertieren und .docx-Dateien für das LLM wieder als Markdown lesen."
+  "Convert Markdown to Office documents — Word (.docx, .odt, .rtf) and PowerPoint (.pptx) — via the media-derivatives abstraction, and read them back as Markdown for the LLM.": "Markdown über die Media-Derivatives-Abstraktion in Office-Dokumente konvertieren — Word (.docx, .odt, .rtf) und PowerPoint (.pptx) — und sie für das LLM wieder als Markdown lesen."
 }

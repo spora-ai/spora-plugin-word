@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Services;
+namespace Spora\Plugins\Office\Services;
 
 use Spora\Models\MediaAsset;
-use Spora\Plugins\Word\Exceptions\WordDocumentException;
-use Spora\Plugins\Word\Exceptions\WordRuntimeException;
+use Spora\Plugins\Office\Exceptions\OfficeDocumentException;
+use Spora\Plugins\Office\Exceptions\OfficeRuntimeException;
 use Spora\Services\AssetStorageException;
 use Spora\Services\DatabaseAssetStore;
 use Spora\Services\LocalAssetStore;
@@ -14,7 +14,7 @@ use Spora\Services\LocalAssetStore;
 /**
  * The one place both producers read a parent asset's bytes, through the stores.
  */
-final class WordSourceBytes
+final class OfficeSourceBytes
 {
     public function __construct(
         private readonly DatabaseAssetStore $databaseAssetStore,
@@ -24,15 +24,15 @@ final class WordSourceBytes
     /**
      * @param string $producer short class name, so a failure names the calling seam.
      *
-     * @throws WordRuntimeException  when the row holds no materialised bytes.
-     * @throws WordDocumentException when a local file is on disk but unreadable.
+     * @throws OfficeRuntimeException  when the row holds no materialised bytes.
+     * @throws OfficeDocumentException when a local file is on disk but unreadable.
      */
     public function read(MediaAsset $asset, string $producer): string
     {
         return match ((string) $asset->storage_mode) {
             'data_url' => $this->readDatabaseBytes($asset, $producer),
             'local'    => $this->readLocalBytes($asset, $producer),
-            default    => throw new WordRuntimeException(sprintf(
+            default    => throw new OfficeRuntimeException(sprintf(
                 '%s: asset %s is stored "%s", which holds no bytes to render. '
                     . 'A URL is not a body: nothing in the media tool fetches one for you, so the '
                     . 'document has to reach the archive as an upload or as text you pass to '
@@ -52,7 +52,7 @@ final class WordSourceBytes
             $producer,
         );
         if ($stored['bytes'] === '') {
-            throw new WordRuntimeException(sprintf(
+            throw new OfficeRuntimeException(sprintf(
                 '%s: asset %s has an empty data_url payload',
                 $producer,
                 (string) $asset->id,
@@ -72,7 +72,7 @@ final class WordSourceBytes
 
         // Load-bearing: PHP 8.4+ no longer honours `@` here, so this handler is what
         // turns an unreadable file into a clean failure — and it must be paired, or a
-        // second copy (see WordConversion) pops its frame.
+        // second copy (see OfficeConversion) pops its frame.
         set_error_handler(static fn(): bool => true, E_WARNING);
         try {
             $bytes = file_get_contents($file['path']);
@@ -81,7 +81,7 @@ final class WordSourceBytes
         }
 
         if (!is_string($bytes)) {
-            throw new WordDocumentException(sprintf(
+            throw new OfficeDocumentException(sprintf(
                 '%s: asset %s local file is unreadable: %s',
                 $producer,
                 (string) $asset->id,
@@ -90,7 +90,7 @@ final class WordSourceBytes
         }
 
         if ($bytes === '') {
-            throw new WordRuntimeException(sprintf(
+            throw new OfficeRuntimeException(sprintf(
                 '%s: asset %s has an empty local file',
                 $producer,
                 (string) $asset->id,
@@ -111,7 +111,7 @@ final class WordSourceBytes
         try {
             return $read();
         } catch (AssetStorageException $e) {
-            throw new WordRuntimeException(sprintf(
+            throw new OfficeRuntimeException(sprintf(
                 '%s: cannot read the bytes of asset %s: %s',
                 $producer,
                 (string) $asset->id,

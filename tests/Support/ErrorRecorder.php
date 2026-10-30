@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Tests\Support;
+namespace Spora\Plugins\Office\Tests\Support;
 
 /**
  * Sits underneath whatever error handler a test installs, recording every
  * diagnostic that reaches it.
  *
  * `set_error_handler`'s stack — not `error_reporting` — is what
- * {@see \Spora\Plugins\Word\Services\WordConversion}'s suppressor manipulates,
+ * {@see \Spora\Plugins\Office\Services\OfficeConversion}'s suppressor manipulates,
  * so this recorder is the only place a diagnostic the suppressor *declines*
  * becomes observable. Counting PHPWord's own notices is how a test proves the
  * frame was popped again: if it were still installed, an unmediated render

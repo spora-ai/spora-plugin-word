@@ -4,24 +4,24 @@ declare(strict_types=1);
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 use Spora\Models\MediaAsset;
-use Spora\Plugins\Word\Exceptions\WordDocumentException;
-use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
-use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
-use Spora\Plugins\Word\Refiners\WordDocxMimeRefiner;
-use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Plugins\Word\Tests\Support\DeprecationFilter;
-use Spora\Plugins\Word\Tests\Support\DocxFixtures;
-use Spora\Plugins\Word\Tests\Support\WordMediaArchive;
+use Spora\Plugins\Office\Exceptions\OfficeDocumentException;
+use Spora\Plugins\Office\Producers\MarkdownToOfficeProducer;
+use Spora\Plugins\Office\Producers\OfficeToMarkdownProducer;
+use Spora\Plugins\Office\Refiners\OfficeMimeRefiner;
+use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Tests\Support\DeprecationFilter;
+use Spora\Plugins\Office\Tests\Support\DocxFixtures;
+use Spora\Plugins\Office\Tests\Support\OfficeMediaArchive;
 use Spora\Services\MediaArchive\Exceptions\NoDerivativeProducerException;
 use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 
 beforeEach(function () {
     DeprecationFilter::silencePhpWord();
-    MediaDerivativeProducerDiscovery::add(MarkdownToDocxProducer::class);
-    MediaDerivativeProducerDiscovery::add(DocxToMarkdownProducer::class);
+    MediaDerivativeProducerDiscovery::add(MarkdownToOfficeProducer::class);
+    MediaDerivativeProducerDiscovery::add(OfficeToMarkdownProducer::class);
     // Production registers this too: it types a `.docx` before the allowlist runs.
-    MediaMimeRefinerDiscovery::add(WordDocxMimeRefiner::class);
+    MediaMimeRefinerDiscovery::add(OfficeMimeRefiner::class);
 });
 
 afterEach(function () {
@@ -33,10 +33,10 @@ afterEach(function () {
  * Markdown, `create_derivative` renders it into a Word document.
  */
 it('renders a stored markdown asset into a downloadable docx derivative', function () {
-    $container   = WordMediaArchive::container();
-    $derivatives = WordMediaArchive::derivativeService($container);
+    $container   = OfficeMediaArchive::container();
+    $derivatives = OfficeMediaArchive::derivativeService($container);
 
-    $parent = WordMediaArchive::ingestMarkdown($container);
+    $parent = OfficeMediaArchive::ingestMarkdown($container);
 
     // `ingestFromBytes()` always re-sniffs: `create_media`'s `text/markdown`
     // is a hint, never a claim, so the row lands as whatever the sniffer makes
@@ -49,7 +49,7 @@ it('renders a stored markdown asset into a downloadable docx derivative', functi
 
     $derivative = $derivatives->createFromRequest($parent, 'docx');
 
-    expect($derivative->mime_type)->toBe(WordConversion::DOCX_MIME)
+    expect($derivative->mime_type)->toBe(OfficeConversion::DOCX_MIME)
         ->and($derivative->asset_url)->toEndWith('.docx')
         ->and((int) $derivative->byte_size)->toBeGreaterThan(100)
         ->and((int) $derivative->byte_size)->toBe(strlen((string) $derivative->payload))
@@ -64,14 +64,14 @@ it('renders a stored markdown asset into a downloadable docx derivative', functi
     expect($join)->not->toBeNull()
         ->and($join->derivative_id)->toBe($derivative->id)
         ->and($join->format)->toBe('docx')
-        ->and($join->producer_plugin)->toBe('spora-plugin-word')
-        ->and($join->producer_operation)->toBe('word.render');
+        ->and($join->producer_plugin)->toBe('spora-plugin-office')
+        ->and($join->producer_operation)->toBe('office.render');
 });
 
 it('is idempotent on the natural key, so a retry reuses the same derivative', function () {
-    $container   = WordMediaArchive::container();
-    $derivatives = WordMediaArchive::derivativeService($container);
-    $parent      = WordMediaArchive::ingestMarkdown($container);
+    $container   = OfficeMediaArchive::container();
+    $derivatives = OfficeMediaArchive::derivativeService($container);
+    $parent      = OfficeMediaArchive::ingestMarkdown($container);
 
     $first  = $derivatives->createFromRequest($parent, 'docx');
     $second = $derivatives->createFromRequest($parent, 'docx');
@@ -85,9 +85,9 @@ it('is idempotent on the natural key, so a retry reuses the same derivative', fu
 });
 
 it('reports a format it cannot produce as a conflict, not as a broken document', function () {
-    $container   = WordMediaArchive::container();
-    $derivatives = WordMediaArchive::derivativeService($container);
-    $parent      = WordMediaArchive::ingestMarkdown($container);
+    $container   = OfficeMediaArchive::container();
+    $derivatives = OfficeMediaArchive::derivativeService($container);
+    $parent      = OfficeMediaArchive::ingestMarkdown($container);
     $caught      = null;
 
     try {
@@ -105,11 +105,11 @@ it('reports a format it cannot produce as a conflict, not as a broken document',
 });
 
 it('cleans the join row up when the parent asset is deleted', function () {
-    $container   = WordMediaArchive::container();
-    $archive     = WordMediaArchive::archiveService($container);
-    $derivatives = WordMediaArchive::derivativeService($container);
+    $container   = OfficeMediaArchive::container();
+    $archive     = OfficeMediaArchive::archiveService($container);
+    $derivatives = OfficeMediaArchive::derivativeService($container);
 
-    $parent     = WordMediaArchive::ingestMarkdown($container);
+    $parent     = OfficeMediaArchive::ingestMarkdown($container);
     $derivative = $derivatives->createFromRequest($parent, 'docx');
 
     expect($derivatives->parentOf($derivative->id))->toBe($parent->id)
@@ -126,12 +126,12 @@ it('cleans the join row up when the parent asset is deleted', function () {
 });
 
 it('extracts a docx upload into an md derivative the archive can serve', function () {
-    $container   = WordMediaArchive::container();
-    $derivatives = WordMediaArchive::derivativeService($container);
+    $container   = OfficeMediaArchive::container();
+    $derivatives = OfficeMediaArchive::derivativeService($container);
 
-    $parent = WordMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
+    $parent = OfficeMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
 
-    expect($parent->mime_type)->toBe(WordConversion::DOCX_MIME)
+    expect($parent->mime_type)->toBe(OfficeConversion::DOCX_MIME)
         ->and($parent->asset_url)->toEndWith('.docx');
 
     $derivative = $derivatives->createFromRequest($parent, 'md');
@@ -152,19 +152,19 @@ it('extracts a docx upload into an md derivative the archive can serve', functio
     expect($join)->not->toBeNull()
         ->and($join->derivative_id)->toBe($derivative->id)
         ->and($join->format)->toBe('md')
-        ->and($join->producer_plugin)->toBe('spora-plugin-word')
-        ->and($join->producer_operation)->toBe('word.extract');
+        ->and($join->producer_plugin)->toBe('spora-plugin-office')
+        ->and($join->producer_operation)->toBe('office.extract');
 });
 
 it('chains a docx into an md derivative and back into a docx derivative', function () {
-    $container   = WordMediaArchive::container();
-    $derivatives = WordMediaArchive::derivativeService($container);
+    $container   = OfficeMediaArchive::container();
+    $derivatives = OfficeMediaArchive::derivativeService($container);
 
-    $parent = WordMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
+    $parent = OfficeMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
     $md     = $derivatives->createFromRequest($parent, 'md');
     $docx   = $derivatives->createFromRequest($md, 'docx');
 
-    expect($docx->mime_type)->toBe(WordConversion::DOCX_MIME)
+    expect($docx->mime_type)->toBe(OfficeConversion::DOCX_MIME)
         // `filenameFor()` drops the parent extension, so the second generation repeats the name.
         ->and($docx->filename)->toBe('report.docx')
         ->and(substr((string) $docx->payload, 0, 2))->toBe('PK');
@@ -174,15 +174,15 @@ it('chains a docx into an md derivative and back into a docx derivative', functi
         ->and($derivatives->parentOf($md->id))->toBe($parent->id)
         ->and($derivatives->parentOf($docx->id))->toBe($md->id)
         ->and(array_column($derivatives->listFor($parent->id), 'producer_operation'))
-        ->toBe(['word.extract']);
+        ->toBe(['office.extract']);
 });
 
 it('resolves a docx parent whose mime came back as a coarse zip', function () {
-    $container   = WordMediaArchive::container();
-    $derivatives = WordMediaArchive::derivativeService($container);
+    $container   = OfficeMediaArchive::container();
+    $derivatives = OfficeMediaArchive::derivativeService($container);
 
     // No `word/document.xml`, so the refiner declines and the row keeps the coarse verdict.
-    $parent = WordMediaArchive::ingestDocxUpload(
+    $parent = OfficeMediaArchive::ingestDocxUpload(
         $container,
         DocxFixtures::zipContaining(['notes.txt' => 'a plain archive']),
         'report.docx',
@@ -194,13 +194,13 @@ it('resolves a docx parent whose mime came back as a coarse zip', function () {
     $caught = null;
     try {
         $derivatives->createFromRequest($parent, 'md');
-    } catch (WordDocumentException $e) {
+    } catch (OfficeDocumentException $e) {
         $caught = $e;
     }
 
-    expect($caught)->toBeInstanceOf(WordDocumentException::class);
+    expect($caught)->toBeInstanceOf(OfficeDocumentException::class);
 
-    $docx = WordMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
+    $docx = OfficeMediaArchive::ingestDocxUpload($container, DocxFixtures::docx());
     $md   = $derivatives->createFromRequest($docx, 'md');
     expect($md->mime_type)->toBe('text/markdown');
 });

@@ -67,7 +67,7 @@ function clearSession(): void
 uses()
     ->beforeEach(function () {
         Database::resetBootState();
-        $tmpDb = sys_get_temp_dir() . '/spora-plugin-word-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $tmpDb = sys_get_temp_dir() . '/spora-plugin-office-' . bin2hex(random_bytes(4)) . '.sqlite';
         $db = new Database(new Config(['SPORA_DB_DRIVER' => 'sqlite', 'SPORA_DB_PATH' => $tmpDb]));
         $db->bootDatabaseConnectionOnly();
 

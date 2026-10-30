@@ -1,14 +1,14 @@
 {
     "$schema": "https://docs.spora-ai.com/schemas/plugin.schema.json",
-    "name": "spora-ai/spora-plugin-word",
-    "slug": "word",
-    "description": "Convert Markdown to Word (.docx) via the media-derivatives abstraction, and read .docx files back as Markdown for the LLM.",
-    "class": "Spora\\Plugins\\Word\\WordPlugin",
+    "name": "spora-ai/spora-plugin-office",
+    "slug": "office",
+    "description": "Convert Markdown to Office documents — Word (.docx, .odt, .rtf) and PowerPoint (.pptx) — via the media-derivatives abstraction, and read them back as Markdown for the LLM.",
+    "class": "Spora\\Plugins\\Office\\OfficePlugin",
     "icon": "file-text",
     "accent": "sky",
     "autoload": {
         "psr-4": {
-            "Spora\\Plugins\\Word\\": "src/"
+            "Spora\\Plugins\\Office\\": "src/"
         }
     }
 }

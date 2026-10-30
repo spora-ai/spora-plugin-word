@@ -1,25 +1,34 @@
-# Spora Plugin: Word
+# Spora Plugin: Office
 
-Markdown ⇄ Microsoft Word (`.docx`) for Spora agents. Backed by
-[`fabeat/markdown-word`](https://github.com/fabeat/markdown-word) and the
-media-archive producer / refiner registries in `spora-core`.
+Markdown ⇄ Office documents for Spora agents — Word (`.docx`, `.odt`, `.rtf`)
+and PowerPoint (`.pptx`). Backed by
+[`markdown-office/markdown-word`](https://github.com/markdown-office/markdown-word)
+and [`markdown-office/markdown-presentation`](https://github.com/markdown-office/markdown-presentation),
+and the media-archive producer / refiner registries in `spora-core`.
 
 The plugin ships **no LLM tool, no routes and no admin app**. It contributes
-three registrations to core's Media Archive and one skill, so the existing
-`media` tool gains `.docx` in both directions:
+five registrations to core's Media Archive and two skills, so the existing
+`media` tool gains Office documents in both directions:
 
 - **Write** — `media(action: "create_media")` stores the Markdown, then
-  `media(action: "create_derivative", format: "docx")` renders it to a Word
-  document the user downloads.
-- **Read** — a `.docx` uploaded to a chat is extracted into a `md` derivative,
-  and that text is inlined into the agent's context. No tool call involved.
+  `media(action: "create_derivative", format: "docx")` renders it to a document
+  the user downloads.
+- **Read** — a `.docx` or a `.pptx` uploaded to a chat is extracted into an
+  `md` derivative, and that text is inlined into the agent's context. No tool
+  call involved.
+
+> **This package was renamed.** It was `spora-ai/spora-plugin-word`, and the
+> GitHub repository is still `spora-ai/spora-plugin-word` until the maintainer
+> renames it. The old package stays published and is **deprecated, not
+> deleted**: `spora-fgrassl` pins `spora-ai/spora-plugin-word: ^0.2.0`, and a
+> host that has not moved yet keeps working. Install the new name for
+> everything new.
 
 ## Requires four PHP extensions
 
-This is the first Spora plugin with more than one extension requirement. **All
-four are hard requirements of the upstream package** — the plugin does not
-degrade without them, and unlike `ext-typst` there is no optional-extension
-path and no subset of the suite that runs without them.
+**All four are hard requirements of the upstream packages** — the plugin does
+not degrade without them, and unlike `ext-typst` there is no
+optional-extension path and no subset of the suite that runs without them.
 
 | | |
 | --- | --- |
@@ -59,57 +68,89 @@ If that trade is acceptable — and on a host already running Spora, `ext-dom` i
 present because spora-core requires it — install with:
 
 ```bash
-composer require spora-ai/spora-plugin-word --ignore-platform-req=ext-gd
+composer require spora-ai/spora-plugin-office --ignore-platform-req=ext-gd
 # or, to bypass all four at once:
-composer require spora-ai/spora-plugin-word --ignore-platform-req=ext-zip --ignore-platform-req=ext-dom --ignore-platform-req=ext-mbstring --ignore-platform-req=ext-gd
+composer require spora-ai/spora-plugin-office --ignore-platform-req=ext-zip --ignore-platform-req=ext-dom --ignore-platform-req=ext-mbstring --ignore-platform-req=ext-gd
 ```
 
 Prefer enabling the extension. The flag exists for the host where you cannot.
 
+### The host has to allow `cweagans/composer-patches`
+
+`markdown-presentation` writes a few things a released PHPPresentation cannot,
+and gets them from a patch applied to the installed package. Composer runs
+that patch only when the **host** allows the plugin — `allow-plugins` is a
+root-project setting, and `spora-ai/installer` routes `spora-plugin` packages
+into the host's `plugins/{name}/`, so the host's tree is where the dependency
+lands.
+
+```bash
+composer config allow-plugins.cweagans/composer-patches true
+```
+
+Without the entry the install stops with Composer's own message:
+
+```
+cweagans/composer-patches contains a Composer plugin which is blocked by your allow-plugins config.
+```
+
+With the entry set to `false`, or with `--no-plugins`, the install succeeds and
+every deck render fails with `MarkdownPresentation\Exception\UnpatchedDependency`
+— which names the plugin and says what to do, so the failure is diagnosable
+rather than mysterious.
+
+The patch adds five methods to PHPPresentation. When PHPPresentation 1.3.0
+ships them upstream — the changes are queued as the open PRs #1041, #1042 and
+#1043 — `markdown-presentation` drops the composer plugin, the patch and the
+`allow-plugins` entry all at once. Until then the entry is required.
+
 ### spora-core version floor
 
 The real requirement is the `Spora\Services\MediaArchive\MediaMimeRefinerInterface`
-seam — the third registry below — which `composer.json` expresses as
+seam — the refiner registry below — which `composer.json` expresses as
 `spora-ai/spora-core >=0.30.0`. Core `v0.30.0` is tagged and indexed on
 Packagist, so spora-core resolves from Packagist like every other plugin.
 Install it the usual way:
 
 ```bash
-composer require spora-ai/spora-plugin-word
+composer require spora-ai/spora-plugin-office
 ```
 
 A host running core older than `v0.30.0` has no `MediaMimeRefinerInterface` and
 must upgrade core.
 
-`WordPlugin::onContainerBuilding()` checks `interface_exists()` at boot and
+`OfficePlugin::onContainerBuilding()` checks `interface_exists()` at boot and
 throws `PluginLoadFailedException` naming the missing seam when the host's core
-predates it, rather than registering two of the three contributions and leaving
+predates it, rather than registering two of the five contributions and leaving
 a silently half-working plugin.
 
 ## What's in the box
 
-- 1 skill (`word-documents`) — the two-call chain, the five documented
-  round-trip losses, the image rules, the approval and idempotency rules.
-- 3 media-archive registrations: two derivative producers and a MIME refiner
+- 2 skills (`office-documents`, `office-presentations`) — the two-call chain,
+  the theme catalogue, the five documented round-trip losses, the image rules,
+  the approval and idempotency rules.
+- 5 media-archive registrations: four derivative producers and a MIME refiner
   (table below).
 - 3 exception classes, mirroring the Typst plugin's shape.
 - No tools, no routes, no admin app, **no frontend package** — the download card
   that renders a `.docx` in chat is core's `MediaEmbed::fileCard()`, so there is
-  no `spora-plugin-word-frontend` to build or ship.
+  no `spora-plugin-office-frontend` to build or ship.
 
-## The three registrations
+## The five registrations
 
-`WordPlugin::onContainerBuilding()` calls `add()` on two separate registries.
-Both producers share one seam — the round trip is two directions of the same
+`OfficePlugin::onContainerBuilding()` calls `add()` on two separate registries.
+The producers share one seam — the round trip is two directions of the same
 contract, so an `md` extract is a legal parent for a `docx` render — and the
 refiner is the other. Registering only some of them leaves a plugin that
 half-works rather than one that errors.
 
 | Interface | Class | What it does |
 | --- | --- | --- |
-| `MediaDerivativeProducerInterface` | `Producers\MarkdownToDocxProducer` | Markdown parent + `format: "docx"` → DOCX bytes as a new `media_assets` row. `pluginSlug()` = `spora-plugin-word`, `operationName()` = `word.render` — both are part of the idempotency natural key. |
-| `MediaDerivativeProducerInterface` | `Producers\DocxToMarkdownProducer` | DOCX parent + `format: "md"` → GFM Markdown as a new `media_assets` row. `operationName()` = `word.extract`, distinct from the render half so the two rows never collapse onto one key. This is the half the chat reads. **Its declared source formats are also what puts `.docx` on the upload allowlist** — `MediaAllowedTypesService` unions every registered producer's source MIME, and nothing else in this plugin contributes an upload type. That union reaches `allowedMimeTypes()` only from core's md-derivative cut onwards; on an older core the entry came from the converter registry, which that cut deletes along with this PR. **The two must land together** — separated, the plugin boots fine and every `.docx` upload is a 415 at the gate. |
-| `MediaMimeRefinerInterface` | `Refiners\WordDocxMimeRefiner` | Upgrades a coarse `application/zip` sniff to the DOCX MIME, but only when the archive actually contains `word/document.xml` — so xlsx / pptx / epub are not mislabelled. Runs before the upload allowlist check. |
+| `MediaDerivativeProducerInterface` | `Producers\MarkdownToOfficeProducer` | Markdown parent + `format: "docx"` / `"odt"` / `"rtf"` → document bytes as a new `media_assets` row. `pluginSlug()` = `spora-plugin-office`, `operationName()` = `office.render` — both are part of the idempotency natural key. |
+| `MediaDerivativeProducerInterface` | `Producers\OfficeToMarkdownProducer` | DOCX parent + `format: "md"` → GFM Markdown as a new `media_assets` row. `operationName()` = `office.extract`, distinct from the render half so the two rows never collapse onto one key. This is the half the chat reads. **Its declared source formats are also what puts `.docx` on the upload allowlist** — `MediaAllowedTypesService` unions every registered producer's source MIME, and nothing else in this plugin contributes an upload type. That union reaches `allowedMimeTypes()` only from core's md-derivative cut onwards; on an older core the entry came from the converter registry, which that cut deletes along with this PR. **The two must land together** — separated, the plugin boots fine and every `.docx` upload is a 415 at the gate. |
+| `MediaDerivativeProducerInterface` | `Producers\MarkdownToPresentationProducer` | Markdown deck parent + `format: "pptx"` → deck bytes. `operationName()` = `presentation.render`. The format is part of the natural key, so a deck and a document from the same parent are two rows and never one. |
+| `MediaDerivativeProducerInterface` | `Producers\PresentationToMarkdownProducer` | PPTX parent + `format: "md"` → the deck as Markdown. `operationName()` = `presentation.extract`. Its PPTX MIME is what puts `.pptx` on the upload allowlist. |
+| `MediaMimeRefinerInterface` | `Refiners\OfficeMimeRefiner` | Upgrades a coarse `application/zip` sniff to the DOCX or the PPTX MIME, but only when the archive actually contains `word/document.xml` or `ppt/presentation.xml` — so xlsx and epub are not mislabelled. Runs before the upload allowlist check. |
 
 The refiner exists for a concrete reason: `MimeSniffer` feeds 4096 bytes to
 `finfo_buffer`, which on most current libmagic builds reports a DOCX as its
@@ -118,9 +159,42 @@ proper OOXML type — but on older builds the same 4096 bytes come back
 matches every zip, so the signature table cannot fix it; only opening the
 archive can.
 
+## Themes in the media library
+
+A **theme** is a top-level folder in the media library. Its name is the
+theme's name, and its files are the library's own:
+
+```
+Corporate/                     ← the folder; "Corporate" is the theme's name
+  theme.yml                    ← the slides manifest (the superset)
+  styles.yml                   ← the word half's slots
+  layouts.yml                  ← the slides half's layout roles
+  text-styles.yml              ← the slides half's named text styles
+  template.pptx                ← the slides half's master (optional)
+```
+
+A document names one in its frontmatter — `theme: corporate` — and the folder's
+UUID resolves as well, so a task can pin a theme by a value that survives a
+rename. **A media theme shadows a built-in of the same name**, so the media
+library's `corporate` is not the renderer shipped `corporate`.
+
+The plugin reads the library through one class,
+`Finder\MediaLibraryFinder`, which implements both upstream finder interfaces
+(`MarkdownWord\Files\FileFinder` and `MarkdownPresentation\Files\FileFinder`)
+and answers for **one principal**. A theme name is a folder name and never a
+path, so `theme: ../other-tenant` names no folder of yours and resolves to
+nothing.
+
+**The Word half is served a projection of the manifest** — `name`,
+`description` and `author` only. The slides manifest accepts colours, fonts
+and a type scale, and the Word loader refuses a key it does not know, so one
+folder cannot hold one manifest unchanged for both halves. The projection is
+the one lossy step in the whole arrangement, and it is stated here, in one
+place, on purpose.
+
 ## The chain
 
-Two calls on core's `media` tool. There is no `word_document` tool, by design.
+Two calls on core's `media` tool. There is no `office_document` tool, by design.
 
 ```jsonc
 // 1. store the Markdown
@@ -137,10 +211,12 @@ returned `asset_id` is the handle for everything downstream and a retry leaves a
 duplicate in the user's library. `create_derivative` **is** idempotent on
 `(parent_id, format, producer_plugin, producer_operation)`, so re-rendering the
 same parent in the same format is a safe retry and returns the same
-`derivative_id`.
+`derivative_id`. It **does** rewrite the stored bytes: the existing derivative
+is re-rendered in place.
 
-The one producer option is `options: {"plain": true}`, which renders without
-decoration. It is not purely cosmetic — see the round-trip note below.
+The producer options are `{"plain": true}` (no decoration) and
+`{"theme": "<name>"}` (a theme that outranks the document's own frontmatter).
+`plain` is not purely cosmetic — see the round-trip note below.
 
 Document assets render in chat as a download card rather than a bare markdown
 link, emitted by core's `MediaEmbed::fileCard()` and styled by core's CSS. The
@@ -148,7 +224,7 @@ filename and the `href` are the entire contract.
 
 ## Reading a `.docx` back
 
-No tool call. The archive extracts a `.docx` into a `md` derivative — a real
+No tool call. The archive extracts a `.docx` into an `md` derivative — a real
 `media_assets` row, reachable and re-derivable like any other — and the chat
 inlines its text into the agent's context. "What does this contract say" is
 answered from text the model can already see.
@@ -177,25 +253,26 @@ any depth, and remote
 images are never fetched (the library has no HTTP client), so they fall back to
 their alt text.
 
+A `.pptx` is a package of positioned boxes. Reading a deck back gives the
+words, their order and the pictures; the type sizes, the colours and the
+geometry live in the theme and the master, and neither travels.
+
 The agent-facing version of all of this, with the practical rules, is
-`skills/word-documents/SKILL.md`. Read it before changing how documents are
-produced.
+`skills/office-documents/SKILL.md` and `skills/office-presentations/SKILL.md`.
+Read them before changing how documents are produced.
 
 ## Licensing
 
-The plugin and the upstream [`fabeat/markdown-word`](https://github.com/fabeat/markdown-word)
-are both **MIT**. `phpoffice/phpword`, which does the actual Word writing, is
-**LGPL-3.0** — a copyleft licence, dynamically linked through Composer, and
-not relicensed by this plugin's MIT. Nothing here vendors its source.
-
-Note that `fabeat/markdown-word` is a personal-scope Composer package
-(`fabeat/`, not `spora-ai/`). That is fine as a library dependency, but it means
-a fork or a move to the org is a `composer.json` change here.
+The plugin and the two upstream [`markdown-office`](https://github.com/markdown-office)
+packages are all **MIT**. `phpoffice/phpword`, which does the actual Word
+writing, is **LGPL-3.0** — a copyleft licence, dynamically linked through
+Composer, and not relicensed by this plugin's MIT. Nothing here vendors its
+source.
 
 ## Translations
 
 This plugin ships a German catalogue at [`locales/de.json`](locales/de.json),
-declared through `translationsPaths()` in `src/WordPlugin.php`. The host merges
+declared through `translationsPaths()` in `src/OfficePlugin.php`. The host merges
 it under core's own catalogue, so a German install reads the plugin's operator
 copy in German.
 
@@ -243,44 +320,51 @@ In `spora-local`, add the plugin as a path repo:
 // spora-local/composer.json
 {
     "repositories": [
-        { "type": "path", "url": "../spora-plugin-word", "options": { "symlink": true } }
+        { "type": "path", "url": "../spora-plugin-office", "options": { "symlink": true } }
     ],
     "require": {
-        "spora-ai/spora-plugin-word": "@dev"
+        "spora-ai/spora-plugin-office": "@dev"
     }
 }
 ```
 
-Then `composer update spora-ai/spora-plugin-word`. Exercise the whole thing:
-`composer dev` → ask the agent for a Word document → attach a `.docx` and ask a
-question about it. The three registrations are added on every boot, so no cache
+Then `composer update spora-ai/spora-plugin-office`. Exercise the whole thing:
+`composer dev` → ask the agent for a document → attach a `.docx` and ask a
+question about it. The five registrations are added on every boot, so no cache
 clear is needed between runs.
 
 ## Layout
 
 ```text
 .
-├── composer.json          # spora-ai/spora-plugin-word + fabeat/markdown-word + the four ext-*
-├── plugin.json            # manifest (class=Spora\Plugins\Word\WordPlugin, slug=word, icon=file-text)
+├── composer.json          # spora-ai/spora-plugin-office + the two markdown-office packages + the four ext-*
+├── plugin.json            # manifest (class=Spora\Plugins\Office\OfficePlugin, slug=office, icon=file-text)
 ├── locales/
 │   └── de.json            # German catalogue, keyed by the English source string
 ├── src/
-│   ├── WordPlugin.php                       # entry point — binds DI, registers both discoveries
+│   ├── OfficePlugin.php                       # entry point — binds DI, registers both discoveries
+│   ├── Finder/
+│   │   ├── LibraryHalf.php                    # which half of markdown-office a finder serves
+│   │   ├── MediaLibraryFinder.php             # both upstream FileFinder interfaces, one principal
+│   │   ├── MediaLibrarySource.php             # the seam the finder reads the library through
+│   │   └── EloquentMediaLibrarySource.php     # that seam over core's tables
 │   ├── Producers/
-│   │   ├── MarkdownToDocxProducer.php       # MediaDerivativeProducerInterface impl (md → docx)
-│   │   └── DocxToMarkdownProducer.php       # MediaDerivativeProducerInterface impl (docx → md)
+│   │   ├── MarkdownToOfficeProducer.php       # MediaDerivativeProducerInterface impl (md → docx/odt/rtf)
+│   │   ├── OfficeToMarkdownProducer.php       # MediaDerivativeProducerInterface impl (docx → md)
+│   │   ├── MarkdownToPresentationProducer.php # MediaDerivativeProducerInterface impl (md → pptx)
+│   │   └── PresentationToMarkdownProducer.php # MediaDerivativeProducerInterface impl (pptx → md)
 │   ├── Refiners/
-│   │   └── WordDocxMimeRefiner.php          # MediaMimeRefinerInterface impl (application/zip → DOCX)
+│   │   └── OfficeMimeRefiner.php              # MediaMimeRefinerInterface impl (application/zip → DOCX/PPTX)
 │   ├── Services/
-│   │   ├── WordConversion.php               # shared size caps, deprecation suppressor, exception map
-│   │   └── WordSourceBytes.php              # shared parent-asset read (data_url / local), AssetStorage map
+│   │   ├── OfficeConversion.php               # shared size caps, deprecation suppressor, exception map
+│   │   └── OfficeSourceBytes.php              # shared parent-asset read (data_url / local), AssetStorage map
 │   └── Exceptions/
-│       ├── WordDocumentException.php
-│       ├── WordInvalidArgumentException.php
-│       └── WordRuntimeException.php
-├── skills/word-documents/
-│   ├── SKILL.md                             # the chain, the five round-trip losses, the limits
-│   └── examples.md                          # worked report-with-a-table example, both directions
+│       ├── OfficeDocumentException.php
+│       ├── OfficeInvalidArgumentException.php
+│       └── OfficeRuntimeException.php
+├── skills/
+│   ├── office-documents/                     # the chain, the themes, the five round-trip losses
+│   └── office-presentations/                 # the deck dialect, the themes, the deck's limits
 ├── tests/
 │   ├── Pest.php                             # resets all three discovery registries in afterEach
 │   ├── bootstrap.php
@@ -298,7 +382,7 @@ Five jobs (the standard Spora-plugin CI, plus the skeleton boot):
 - `static-analysis` — PHPStan level 5 (memory limit 512M).
 - `code-style` — `php-cs-fixer` dry-run.
 - `integration` — boots the plugin against a fresh `spora-core` checkout to
-  prove the manifest parses, the DI bindings resolve and the three registrations
+  prove the manifest parses, the DI bindings resolve and the five registrations
   hook in.
 - `sonarcloud` — SonarCloud scan, gated on `test`.
 
@@ -309,23 +393,15 @@ them, and a silently missing `gd` would fail deep inside a test with a message
 that says nothing about the environment.
 
 The SonarCloud project this repo analyses into is
-`spora-ai_spora-plugin-word`; SonarCloud provisions it from the first CI
-analysis, so there is nothing to create by hand. What *does* have to stay off
-is SonarCloud's **Automatic analysis** (autoscan) for this repository. Autoscan
-provisions a project of its own — its key is this one with a `2` appended, and
-its name is the same `spora-plugin-word` — analyses the clone with
-`sonar.sources=.` instead of `sonar-project.properties`, and answers the same
-`?pullRequest=2` links. The result is two dashboards for one PR that disagree:
-the CI one carries the coverage, the test execution and the quality gate,
-while the autoscan one reports findings nobody acts on because it treats the
-test suite as production code. If a `…2` twin appears in the org's project
-list, switch autoscan off for the repo and delete the twin; the header of
-`sonar-project.properties` says the same thing next to the key itself.
+`spora-ai_spora-plugin-word`; it is not renamed with the package, because the
+project key is bound to the GitHub repository and the maintainer performs that
+rename. The header of `sonar-project.properties` says the same thing next to
+the key itself.
 
 ## Publishing
 
-1. `git tag v0.1.0 && git push --tags`.
-2. Configure Packagist to auto-pull from the GitHub repo.
+1. `git tag v0.3.0 && git push --tags`.
+2. Configure Packagist to auto-pull from the GitHub repository.
 
 The runtime reads the version from the git tag via
 `Composer\InstalledVersions::getPrettyVersion()`.

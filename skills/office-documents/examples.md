@@ -1,7 +1,7 @@
 # Examples
 
 Two worked end-to-end examples. Read with
-`skill(action: "read", name: "word-documents", filename: "examples.md")`.
+`skill(action: "read", name: "office-documents", filename: "examples.md")`.
 
 ## Example 1 — a report with a table, Markdown → `.docx`
 

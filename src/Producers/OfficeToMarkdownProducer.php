@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Producers;
+namespace Spora\Plugins\Office\Producers;
 
 use Spora\Models\MediaAsset;
-use Spora\Plugins\Word\Exceptions\WordInvalidArgumentException;
-use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Plugins\Word\Services\WordSourceBytes;
+use Spora\Plugins\Office\Exceptions\OfficeInvalidArgumentException;
+use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Services\OfficeSourceBytes;
 use Spora\Services\MediaArchive\DerivativeOutput;
 use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
 
 /**
- * The read direction: an `md` derivative {@see MarkdownToDocxProducer} accepts
+ * The read direction: an `md` derivative {@see MarkdownToOfficeProducer} accepts
  * back.
  *
  * `supportedSourceFormats()` is load-bearing beyond routing — core unions every
@@ -27,35 +27,39 @@ use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
  * `MediaDerivativeService` keys on `(parent_id, format, producer_plugin,
  * producer_operation)`, so the operation name is part of the natural key.
  */
-final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
+final class OfficeToMarkdownProducer implements MediaDerivativeProducerInterface
 {
     /** The MIME is the allowlist entry; the extension is the filename fallback. */
-    private const SUPPORTED_SOURCE_FORMATS = [WordConversion::DOCX_MIME, 'docx'];
+    private const SUPPORTED_SOURCE_FORMATS = [OfficeConversion::DOCX_MIME, 'docx'];
 
     private const SUPPORTED_FORMATS = ['md'];
 
-    private const MARKDOWN_MIME = 'text/markdown';
-
     public function __construct(
-        private readonly WordConversion $conversion,
-        private readonly WordSourceBytes $sourceBytes,
+        private readonly OfficeConversion $conversion,
+        private readonly OfficeSourceBytes $sourceBytes,
     ) {}
 
     public function pluginSlug(): string
     {
-        return 'spora-plugin-word';
+        return 'spora-plugin-office';
     }
 
     public function operationName(): string
     {
-        return 'word.extract';
+        return 'office.extract';
     }
 
+    /**
+     * @return list<string>
+     */
     public function supportedSourceFormats(): array
     {
         return self::SUPPORTED_SOURCE_FORMATS;
     }
 
+    /**
+     * @return list<string>
+     */
     public function supportedDerivativeFormats(): array
     {
         return self::SUPPORTED_FORMATS;
@@ -64,15 +68,16 @@ final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
     /**
      * @param array<string, mixed> $options unused: this direction is lossless.
      *
-     * @throws WordInvalidArgumentException when `$format` is not `md`.
-     * @throws \Spora\Plugins\Word\Exceptions\WordDocumentException on bad bytes.
+     * @throws OfficeInvalidArgumentException when `$format` is not `md`.
+     * @throws \Spora\Plugins\Office\Exceptions\OfficeDocumentException on bad bytes.
      */
     public function produce(MediaAsset $source, string $format, array $options = []): DerivativeOutput
     {
         $format = strtolower(trim($format));
+
         if (!in_array($format, self::SUPPORTED_FORMATS, true)) {
-            throw new WordInvalidArgumentException(sprintf(
-                'DocxToMarkdownProducer: unsupported derivative format "%s" (supported: %s)',
+            throw new OfficeInvalidArgumentException(sprintf(
+                'OfficeToMarkdownProducer: unsupported derivative format "%s" (supported: %s)',
                 $format,
                 implode(', ', self::SUPPORTED_FORMATS),
             ));
@@ -80,10 +85,10 @@ final class DocxToMarkdownProducer implements MediaDerivativeProducerInterface
 
         // Decides from the bytes: neither the row MIME nor its filename is passed on.
         return new DerivativeOutput(
-            bytes: $this->conversion->docxToMarkdown(
-                $this->sourceBytes->read($source, 'DocxToMarkdownProducer'),
+            bytes: $this->conversion->officeToMarkdown(
+                $this->sourceBytes->read($source, 'OfficeToMarkdownProducer'),
             ),
-            mime: self::MARKDOWN_MIME,
+            mime: OfficeConversion::MARKDOWN_MIME,
             width: null,
             height: null,
             durationSeconds: null,

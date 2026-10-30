@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Spora\Plugins\Word\WordPlugin;
+use Spora\Plugins\Office\OfficePlugin;
 
 $catalogDir = dirname(__DIR__, 2) . '/locales';
 $pluginRoot = dirname(__DIR__, 2);
@@ -55,7 +55,7 @@ $sourceLiterals = function (string $root): array {
 };
 
 it('declares the locales directory through translationsPaths()', function () use ($catalogDir) {
-    $paths = (new WordPlugin())->translationsPaths();
+    $paths = (new OfficePlugin())->translationsPaths();
 
     expect($paths)->toHaveCount(1);
     expect(realpath((string) $paths[0]))->toBe(realpath($catalogDir));
