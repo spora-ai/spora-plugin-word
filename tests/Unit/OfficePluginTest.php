@@ -117,7 +117,7 @@ it('is idempotent across repeated boots', function () {
         ->and(MediaMimeRefinerDiscovery::all())->toBe([OfficeMimeRefiner::class]);
 });
 
-it('contributes no tools, no admin app and no schema', function () {
+it('contributes no tools and no admin app', function () {
     $plugin = new OfficePlugin();
 
     // Decision: the plugin is pure capability. The LLM drives both
@@ -128,9 +128,22 @@ it('contributes no tools, no admin app and no schema', function () {
     expect($plugin->tools())->toBe([])
         ->and($plugin->apps())->toBe([])
         ->and($plugin->agentTemplatePaths())->toBe([])
-        ->and($plugin->schemaVersion())->toBe(0)
-        ->and($plugin->migrationsPath())->toBeNull()
         ->and($plugin->getName())->toBe('Office Documents');
+});
+
+it('declares the migration that rewrites the rows the rename touched', function () {
+    $plugin = new OfficePlugin();
+    $path   = $plugin->migrationsPath();
+
+    expect($plugin->schemaVersion())->toBe(1)
+        ->and(is_dir($path))->toBeTrue()
+        ->and(is_file($path . '/office_000001_rename_producer_identity.php'))->toBeTrue();
+
+    // `DatabaseSchemaInstaller::validateMigrationFilenames()` refuses a
+    // file that does not start with the plugin's slug and an underscore.
+    foreach (glob($path . '/*.php') ?: [] as $file) {
+        expect(basename($file, '.php'))->toStartWith('office_');
+    }
 });
 
 it('ships its skills from a directory that exists', function () {

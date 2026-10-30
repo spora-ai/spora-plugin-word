@@ -132,9 +132,39 @@ a silently half-working plugin.
 - 5 media-archive registrations: four derivative producers and a MIME refiner
   (table below).
 - 3 exception classes, mirroring the Typst plugin's shape.
+- 1 plugin migration — the rows the rename touched (table below).
 - No tools, no routes, no admin app, **no frontend package** — the download card
   that renders a `.docx` in chat is core's `MediaEmbed::fileCard()`, so there is
   no `spora-plugin-office-frontend` to build or ship.
+
+## The data migration
+
+The plugin's identity changed, and the rows that carry it carry **two**
+vocabularies: `pluginSlug()` returns the Composer **package** name
+(`spora-plugin-word`), not the manifest slug (`word`), and `operationName()`
+returns the short slug (`word.render`). `office_000001_rename_producer_identity.php`
+rewrites all of it:
+
+| Column | Before | After |
+| --- | --- | --- |
+| `media_derivatives.producer_plugin` | `spora-plugin-word` | `spora-plugin-office` |
+| `media_derivatives.producer_operation` | `word.render` / `word.extract` | `office.render` / `office.extract` |
+| `media_assets.plugin_slug` | `spora-plugin-word` | `spora-plugin-office` |
+| `media_assets.tool_name` | `word.render` / `word.extract` | `office.render` / `office.extract` |
+
+Both halves of each pair have to move together. The natural key of a derivative
+is `(parent_id, format, producer_plugin, producer_operation)`, and
+`MediaDerivativeService` looks the row up by exactly that — a derivative whose
+`producer_plugin` was rewritten while its `producer_operation` was not no
+longer matches, so the service mints a **second** derivative instead of
+refreshing the one that is there.
+
+It is a **plugin** migration, in `database/migrations/`, because the plugin owns
+its own identity and the rows are core's tables. Every file in that directory
+has to start with the plugin's slug and an underscore — `office_` — or
+`DatabaseSchemaInstaller::validateMigrationFilenames()` refuses it.
+
+The `presentation.*` operations are new and have no rows to rewrite.
 
 ## The five registrations
 
@@ -339,6 +369,8 @@ clear is needed between runs.
 .
 ├── composer.json          # spora-ai/spora-plugin-office + the two markdown-office packages + the four ext-*
 ├── plugin.json            # manifest (class=Spora\Plugins\Office\OfficePlugin, slug=office, icon=file-text)
+├── database/migrations/
+│   └── office_000001_rename_producer_identity.php   # the rows the rename touched
 ├── locales/
 │   └── de.json            # German catalogue, keyed by the English source string
 ├── src/

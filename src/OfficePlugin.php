@@ -104,6 +104,28 @@ final class OfficePlugin extends AbstractPlugin implements EventSubscriberInterf
     }
 
     /**
+     * The plugin's own schema version.
+     *
+     * Bumped whenever a migration file is added under {@see migrationsPath()}.
+     */
+    public function schemaVersion(): int
+    {
+        return 1;
+    }
+
+    /**
+     * Where the plugin's migrations live.
+     *
+     * Every file in the directory has to start with the plugin's slug and an
+     * underscore — `DatabaseSchemaInstaller::validateMigrationFilenames()`
+     * throws otherwise.
+     */
+    public function migrationsPath(): string
+    {
+        return __DIR__ . '/../database/migrations';
+    }
+
+    /**
      * @return string[]
      */
     public function skillPaths(): array
