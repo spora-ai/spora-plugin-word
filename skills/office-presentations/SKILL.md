@@ -146,6 +146,11 @@ library whose name is the theme's name; list them with
 { "action": "list_folders" }   // the media_folders tool: the principal's folders
 ```
 
+**`list_folders` needs a core that carries the media-folders feature**
+(migration `0097`). On a core without it there is no `media_folders` tool to
+call and the media library holds no folders, so the built-in table above is
+the whole list of themes.
+
 A folder that holds a `theme.yml` is a theme. **A media theme shadows a
 built-in of the same name**, so the list you fetched is the list to choose
 from. The folder's id resolves as well, so `theme:` may name either the
@@ -163,17 +168,22 @@ theme that does not exist fails the render with a message naming it.
 A `.pptx` is a package of positioned boxes. A deck is text. **The text and the
 structure travel; the design does not.**
 
-Reading a deck back gives you the words, the order they were in, and the
-pictures — as a Markdown deck you can render again in another design. What does
-not travel is the type sizes, the colours and the geometry: those live in the
-theme and the master, and neither is in the extracted Markdown.
+Reading a deck back gives you the words and the order they were in, as a
+Markdown deck you can render again in another design. What does not travel is
+the type sizes, the colours and the geometry: those live in the theme and the
+master, and neither is in the extracted Markdown.
 
 **The rule that follows: never use a round trip to edit a deck.** Read the deck
 back, edit the Markdown, and render a new one. The Markdown you stored in step
 1 is the source of truth.
 
-A picture in a deck comes back as a reference to a file the extraction wrote
-beside the Markdown, not as the bytes inlined into it.
+**A picture does not come back at all.** The extraction writes no media
+directory, so a picture in the deck is left out of the extracted Markdown — not
+as a reference to a file, not as its alt text, not at all. A deck read back
+carries its words and its structure and **no pictures**. The picture is still
+inside the `.pptx`; the Markdown is all the read-back gives you.
+
+If a picture matters, keep the deck rather than its extracted Markdown.
 
 ## Slides that are too full
 

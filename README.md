@@ -23,6 +23,24 @@ five registrations to core's Media Archive and two skills, so the existing
 > deleted**: `spora-fgrassl` pins `spora-ai/spora-plugin-word: ^0.2.0`, and a
 > host that has not moved yet keeps working. Install the new name for
 > everything new.
+>
+> **Installing this package means removing the old one:**
+>
+> ```bash
+> composer remove spora-ai/spora-plugin-word
+> ```
+>
+> The two cannot both be installed. They register producers for the same
+> (source MIME, format) pairs under different plugin and operation names, so
+> the derivative's natural key — `(parent_id, format, producer_plugin,
+> producer_operation)` — splits in two. Core's
+> `MediaDerivativeService::findProducer()` returns the **first** registered
+> match, and whichever plugin loses that race mints a **second** derivative
+> for the same parent and format: a duplicate `.docx`, or a duplicate extract,
+> beside the migrated one. The rename's data migration compounds it — it
+> rewrites the old plugin's rows into the new plugin's identity, so the old
+> plugin's own rows no longer match its natural key and it can only ever mint
+> new ones.
 
 ## Requires four PHP extensions
 
@@ -222,6 +240,14 @@ folder cannot hold one manifest unchanged for both halves. The projection is
 the one lossy step in the whole arrangement, and it is stated here, in one
 place, on purpose.
 
+**Media themes need a core that carries the folders feature** — migration
+`0097`, which arrives in core `v0.33.0`. The plugin's floor stays at
+`v0.30.0` because it degrades correctly: a core without `media_folders` has no
+folders, so it has no media themes, and the library's own built-in themes are
+the right answer. The `media_folders` tool and its `list_folders` operation
+arrive with the same release, so on an older core there is no tool to call
+and the built-in themes are the whole list.
+
 ## The chain
 
 Two calls on core's `media` tool. There is no `office_document` tool, by design.
@@ -284,8 +310,12 @@ images are never fetched (the library has no HTTP client), so they fall back to
 their alt text.
 
 A `.pptx` is a package of positioned boxes. Reading a deck back gives the
-words, their order and the pictures; the type sizes, the colours and the
-geometry live in the theme and the master, and neither travels.
+words and their order; the type sizes, the colours and the geometry live in
+the theme and the master, and neither travels. **The pictures do not travel
+either**: the reverse direction writes no media directory, so a picture in the
+deck is left out of the extracted Markdown altogether — no reference to a file,
+no alt text. The picture is still inside the `.pptx`; only the Markdown loses
+it, and the Markdown is all the read-back gives you.
 
 The agent-facing version of all of this, with the practical rules, is
 `skills/office-documents/SKILL.md` and `skills/office-presentations/SKILL.md`.

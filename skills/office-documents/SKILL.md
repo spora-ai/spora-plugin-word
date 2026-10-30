@@ -180,6 +180,11 @@ library whose name is the theme's name; list them with
 { "action": "list_folders" }   // the media_folders tool: the principal's folders
 ```
 
+**`list_folders` needs a core that carries the media-folders feature**
+(migration `0097`). On a core without it there is no `media_folders` tool to
+call and the media library holds no folders, so the built-in table above is
+the whole list of themes.
+
 A folder that holds a `theme.yml` is a theme. **A media theme shadows a
 built-in of the same name** — a folder called `corporate` is *that* corporate
 theme, not the one that ships with the renderer — so the list you fetched is

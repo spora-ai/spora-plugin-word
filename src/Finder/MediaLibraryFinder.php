@@ -121,6 +121,35 @@ final class MediaLibraryFinder implements WordFileFinder, PresentationFileFinder
      */
     private function themeFile(string $name): ?string
     {
+        $parts = self::splitThemeFile($name);
+
+        if ($parts === null) {
+            return null;
+        }
+
+        [$theme, $file] = $parts;
+
+        $bytes = $this->library->themeFile($this->principalId, $theme, $file);
+
+        if ($bytes === null) {
+            return null;
+        }
+
+        return $this->servedBytes($file, $bytes);
+    }
+
+    /**
+     * The theme and the file a `<theme>/<file>` name carries, or null when the
+     * name is not that shape.
+     *
+     * Split out so {@see self::themeFile()} stays under the 3-return
+     * brain-overload ceiling: the shape of a name is one decision and the
+     * bytes behind it another.
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private static function splitThemeFile(string $name): ?array
+    {
         $slash = strpos($name, '/');
 
         if ($slash === false) {
@@ -134,17 +163,24 @@ final class MediaLibraryFinder implements WordFileFinder, PresentationFileFinder
             return null;
         }
 
-        $bytes = $this->library->themeFile($this->principalId, $theme, $file);
+        return [$theme, $file];
+    }
 
-        if ($bytes === null) {
-            return null;
+    /**
+     * The bytes of a theme file as the half that asked may read them.
+     *
+     * The Word half is served a projection of the manifest and every other
+     * file is served as it is. Split out for the same reason as
+     * {@see self::splitThemeFile()}: which bytes are served is a decision of
+     * its own, and folding it into the lookup makes both harder to read.
+     */
+    private function servedBytes(string $file, string $bytes): string
+    {
+        if ($this->half !== LibraryHalf::Word || $file !== ThemeLoader::THEME_FILE) {
+            return $bytes;
         }
 
-        if ($this->half === LibraryHalf::Word && $file === ThemeLoader::THEME_FILE) {
-            return $this->project($bytes) ?? $bytes;
-        }
-
-        return $bytes;
+        return $this->project($bytes) ?? $bytes;
     }
 
     /**

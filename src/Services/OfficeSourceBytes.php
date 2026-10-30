@@ -12,7 +12,8 @@ use Spora\Services\DatabaseAssetStore;
 use Spora\Services\LocalAssetStore;
 
 /**
- * The one place both producers read a parent asset's bytes, through the stores.
+ * The one place the plugin's producers read a parent asset's bytes, through
+ * the stores.
  */
 final class OfficeSourceBytes
 {

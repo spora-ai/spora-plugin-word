@@ -131,20 +131,33 @@ final class OfficeMimeRefiner implements MediaMimeRefinerInterface
         }
 
         try {
-            if ($archive->numFiles > OfficeConversion::MAX_ARCHIVE_ENTRIES) {
-                return null;
-            }
-
-            foreach (self::PACKAGE_PARTS as $part => $mime) {
-                if ($archive->locateName($part) !== false) {
-                    return $mime;
-                }
-            }
-
-            return null;
+            return $this->officePartMime($archive);
         } finally {
             $archive->close();
         }
+    }
+
+    /**
+     * The MIME of the Office part the archive carries, or null when it
+     * carries none.
+     *
+     * Split out so {@see self::packageMime()} stays under the 3-return
+     * brain-overload ceiling: opening the archive and naming the part inside
+     * it are two decisions, and the entry-count cap is a third.
+     */
+    private function officePartMime(ZipArchive $archive): ?string
+    {
+        if ($archive->numFiles > OfficeConversion::MAX_ARCHIVE_ENTRIES) {
+            return null;
+        }
+
+        foreach (self::PACKAGE_PARTS as $part => $mime) {
+            if ($archive->locateName($part) !== false) {
+                return $mime;
+            }
+        }
+
+        return null;
     }
 
     /**

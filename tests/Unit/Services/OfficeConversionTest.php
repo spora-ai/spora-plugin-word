@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MarkdownWord\Exception\UnreadableDocument;
 use Spora\Plugins\Office\Exceptions\OfficeDocumentException;
 use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Tests\Support\DeckFixtures;
 use Spora\Plugins\Office\Tests\Support\DocxFixtures;
 use Spora\Plugins\Office\Tests\Support\ErrorHandlerStack;
 use Spora\Plugins\Office\Tests\Support\ErrorRecorder;
@@ -337,4 +338,26 @@ it('refuses a deck that is not a deck', function () {
 
     expect($caught)->toBeInstanceOf(OfficeDocumentException::class)
         ->and($caught->getMessage())->toContain('Reading the presentation');
+});
+
+it('leaves the pictures out of a deck read back', function () {
+    $library = new FakeMediaLibrary();
+    $library->withAsset(7, DeckFixtures::PICTURE_NAME, DeckFixtures::pictureBytes());
+
+    $conversion = new OfficeConversion($library);
+
+    $pptx = $conversion->markdownToPresentation(DeckFixtures::DECK_WITH_PICTURE, 7);
+
+    // The deck really holds the picture, or the assertions below would pass
+    // for the wrong reason.
+    expect(DeckFixtures::mediaParts($pptx))->not->toBeEmpty();
+
+    $markdown = $conversion->presentationToMarkdown($pptx);
+
+    // The reverse direction names no media directory, so the library leaves
+    // the picture out of the extracted deck altogether: no reference to a
+    // file, and no alt text standing in for it.
+    expect($markdown)->not->toContain('![')
+        ->and($markdown)->not->toContain(DeckFixtures::PICTURE_ALT)
+        ->and($markdown)->toContain('Title slide');
 });
