@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use Spora\Plugins\Word\Refiners\WordDocxMimeRefiner;
-use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Plugins\Word\Tests\Support\DeprecationFilter;
-use Spora\Plugins\Word\Tests\Support\DocxFixtures;
-use Spora\Plugins\Word\Tests\Support\ErrorRecorder;
+use Spora\Plugins\Office\Refiners\OfficeMimeRefiner;
+use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Tests\Support\DeprecationFilter;
+use Spora\Plugins\Office\Tests\Support\DocxFixtures;
+use Spora\Plugins\Office\Tests\Support\ErrorRecorder;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
 use Spora\Services\MediaArchive\MimeSniffer;
 
@@ -31,26 +31,26 @@ afterEach(function () {
 });
 
 it('upgrades a coarse zip verdict for a real Word package', function () {
-    $refiner = new WordDocxMimeRefiner();
+    $refiner = new OfficeMimeRefiner();
 
     expect($refiner->refine(DocxFixtures::docx(), 'report.docx', DocxFixtures::ZIP_MIME))
-        ->toBe(WordConversion::DOCX_MIME);
+        ->toBe(OfficeConversion::DOCX_MIME);
 });
 
 it('returns an already-correct docx verdict unchanged', function () {
-    $refiner = new WordDocxMimeRefiner();
+    $refiner = new OfficeMimeRefiner();
     $docx    = DocxFixtures::docx();
 
     // Not a no-op by accident: the DOCX MIME is itself one of the candidate
     // inputs, so a refiner that only promoted zips would leave this alone by
     // omission. Re-stating it pins the contract that a correct verdict
     // survives a round through the registry.
-    expect($refiner->refine($docx, 'report.docx', WordConversion::DOCX_MIME))
-        ->toBe(WordConversion::DOCX_MIME);
+    expect($refiner->refine($docx, 'report.docx', OfficeConversion::DOCX_MIME))
+        ->toBe(OfficeConversion::DOCX_MIME);
 });
 
 it('declines a zip that carries no word document part', function () {
-    $refiner = new WordDocxMimeRefiner();
+    $refiner = new OfficeMimeRefiner();
 
     $zip = DocxFixtures::zipContaining([
         'notes.txt' => 'a plain archive',
@@ -60,33 +60,40 @@ it('declines a zip that carries no word document part', function () {
     expect($refiner->refine($zip, 'bundle.zip', DocxFixtures::ZIP_MIME))->toBeNull();
 });
 
-it('declines another OOXML flavour so spreadsheets are not labelled as Word', function () use ($ooxmlSiblings) {
-    $refiner = new WordDocxMimeRefiner();
+it('declines another OOXML flavour so spreadsheets are not labelled as Office', function () use ($ooxmlSiblings) {
+    $refiner = new OfficeMimeRefiner();
 
     $spreadsheet = DocxFixtures::zipContaining(
         $ooxmlSiblings + ['xl/workbook.xml' => '<?xml version="1.0"?><workbook/>'],
     );
-    $slides = DocxFixtures::zipContaining(
-        $ooxmlSiblings + ['ppt/presentation.xml' => '<?xml version="1.0"?><presentation/>'],
-    );
 
-    // Both are genuine OOXML packages carrying `[Content_Types].xml`, and
-    // both would pass any "is this a zip?" or "is this an Office file?"
-    // check. Only the absent `word/document.xml` separates them from Word.
+    // A genuine OOXML package carrying `[Content_Types].xml`, and one that
+    // would pass any "is this a zip?" or "is this an Office file?" check.
+    // Only the absent `word/document.xml` separates it from Word.
     expect($refiner->refine($spreadsheet, 'book.xlsx', DocxFixtures::ZIP_MIME))->toBeNull()
-        ->and($refiner->refine($slides, 'deck.pptx', DocxFixtures::ZIP_MIME))->toBeNull()
         ->and(DocxFixtures::partOf($spreadsheet, 'xl/workbook.xml'))->toContain('<workbook');
 });
 
+it('upgrades a coarse zip verdict for a real deck', function () use ($ooxmlSiblings) {
+    $refiner = new OfficeMimeRefiner();
+
+    $deck = DocxFixtures::zipContaining(
+        $ooxmlSiblings + ['ppt/presentation.xml' => '<?xml version="1.0"?><presentation/>'],
+    );
+
+    expect($refiner->refine($deck, 'deck.pptx', DocxFixtures::ZIP_MIME))
+        ->toBe(OfficeConversion::PPTX_MIME);
+});
+
 it('declines bytes that are not a zip at all', function () {
-    $refiner = new WordDocxMimeRefiner();
+    $refiner = new OfficeMimeRefiner();
 
     expect($refiner->refine('plain text, definitely not a zip', 'notes.txt', DocxFixtures::ZIP_MIME))->toBeNull()
         ->and($refiner->refine('', null, DocxFixtures::ZIP_MIME))->toBeNull();
 });
 
 it('never opens a payload the sniffer did not call a zip', function () {
-    $refiner = new WordDocxMimeRefiner();
+    $refiner = new OfficeMimeRefiner();
     $docx    = DocxFixtures::docx();
 
     // `application/octet-stream` is `finfo`'s "I cannot name this" verdict.
@@ -99,7 +106,7 @@ it('never opens a payload the sniffer did not call a zip', function () {
 });
 
 it('raises no diagnostic while declining, as its contract promises', function () use ($ooxmlSiblings) {
-    $refiner  = new WordDocxMimeRefiner();
+    $refiner  = new OfficeMimeRefiner();
     $recorder = new ErrorRecorder();
     set_error_handler($recorder, E_ALL);
 
@@ -122,14 +129,14 @@ it('raises no diagnostic while declining, as its contract promises', function ()
 });
 
 it('runs inside MimeSniffer and leaves a non-Word zip alone', function () {
-    MediaMimeRefinerDiscovery::add(WordDocxMimeRefiner::class);
+    MediaMimeRefinerDiscovery::add(OfficeMimeRefiner::class);
 
     $sniffer = new MimeSniffer();
 
     // `MimeSniffer` instantiates refiners with `new $class()` — a
     // no-argument constructor is the contract, and reaching the refiner at
     // all proves it holds.
-    expect((new ReflectionClass(WordDocxMimeRefiner::class))->getConstructor())->toBeNull();
+    expect((new ReflectionClass(OfficeMimeRefiner::class))->getConstructor())->toBeNull();
 
     // The decline is what makes this an integration check rather than a
     // restatement: a bare zip sniffs as `application/zip` on every libmagic
@@ -137,5 +144,5 @@ it('runs inside MimeSniffer and leaves a non-Word zip alone', function () {
     $zip = DocxFixtures::zipContaining(['notes.txt' => 'a plain archive']);
     expect($sniffer->sniffFromBytes($zip, 'bundle.zip'))->toBe(DocxFixtures::ZIP_MIME)
         ->and($sniffer->sniffFromBytes(DocxFixtures::docx(), 'report.docx'))
-        ->toBe(WordConversion::DOCX_MIME);
+        ->toBe(OfficeConversion::DOCX_MIME);
 });

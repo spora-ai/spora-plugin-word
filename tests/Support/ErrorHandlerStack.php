@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Tests\Support;
+namespace Spora\Plugins\Office\Tests\Support;
 
 /**
  * Measures how many `set_error_handler()` frames a call left behind.

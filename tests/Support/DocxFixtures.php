@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Tests\Support;
+namespace Spora\Plugins\Office\Tests\Support;
 
 use MarkdownWord\Configuration;
 use MarkdownWord\MarkdownToWord;
@@ -23,7 +23,7 @@ final class DocxFixtures
 {
     /**
      * `libmagic`'s verdict for a bare zip, and the coarse MIME
-     * {@see \Spora\Plugins\Word\Refiners\WordDocxMimeRefiner} exists to
+     * {@see \Spora\Plugins\Office\Refiners\OfficeMimeRefiner} exists to
      * promote. A property of the archive format, so it lives here rather than in `src/`.
      */
     public const ZIP_MIME = 'application/zip';
@@ -69,7 +69,7 @@ final class DocxFixtures
 
     /**
      * A zip that is deliberately not a Word document — the shape an xlsx or
-     * pptx upload has, and the case {@see \Spora\Plugins\Word\Refiners\WordDocxMimeRefiner}
+     * pptx upload has, and the case {@see \Spora\Plugins\Office\Refiners\OfficeMimeRefiner}
      * must decline rather than mislabel.
      *
      * @param array<string, string> $parts

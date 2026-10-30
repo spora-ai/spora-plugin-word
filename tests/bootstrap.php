@@ -19,7 +19,7 @@ declare(strict_types=1);
 | phpoffice/phpword 1.4 emits `Using null as an array offset is deprecated`
 | from `PhpWord\Style::getStyle()` on every render — around a dozen
 | notices for a trivial document. Production code suppresses them at the
-| call site in {@see \Spora\Plugins\Word\Services\WordConversion}; this
+| call site in {@see \Spora\Plugins\Office\Services\OfficeConversion}; this
 | bootstrap covers the *test* runs, where the production suppressor is
 | deliberately not exercised on every single assertion.
 |

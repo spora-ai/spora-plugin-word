@@ -1,6 +1,6 @@
 ---
-name: word-documents
-description: "Produce and read Microsoft Word (.docx) documents through the Media Archive. Trigger on any of: 'make this a Word document', 'write this up as a .docx', 'turn this Markdown into a document', 'attach a Word file', 'read this Word document', 'what does this contract say', or any request naming a .docx file. Covers the two-call create_media → create_derivative chain, what survives the round trip, and the limits on images."
+name: office-documents
+description: "Produce and read Office documents through the Media Archive. Trigger on any of: 'make this a Word document', 'write this up as a .docx', 'turn this Markdown into a document', 'attach a Word file', 'read this Word document', 'what does this contract say', or any request naming a .docx, .odt or .rtf file. Covers the two-call create_media → create_derivative chain, the themes the media library holds, what survives the round trip, and the limits on images."
 license: MIT
 compatibility: "Designed for Spora agents with the `media` tool enabled."
 metadata:
@@ -9,17 +9,17 @@ metadata:
 allowed-tools: media
 ---
 
-# Word documents
+# Office documents
 
-This plugin ships **no tool of its own**. It registers two DOCX *producers* with
-the Media Archive — one that renders Markdown into a `.docx` derivative, one that
-extracts a `.docx` into an `md` derivative — so a Word document becomes a format
-the existing `media` tool can write and read, and an `md` extract is itself a
-legal parent for a `.docx` render. Producing one costs **two `media` calls**.
+This plugin ships **no tool of its own**. It registers DOCX *producers* with
+the Media Archive — one that renders Markdown into a document derivative, one
+that extracts a document into an `md` derivative — so a Word document becomes a
+format the existing `media` tool can write and read, and an `md` extract is
+itself a legal parent for a render. Producing one costs **two `media` calls**.
 Reading one the user attached costs **none at all** — the extracted text is
 already in your context.
 
-Worked end-to-end examples: `skill(action: "read", name: "word-documents", filename: "examples.md")`.
+Worked end-to-end examples: `skill(action: "read", name: "office-documents", filename: "examples.md")`.
 
 ## The chain
 
@@ -64,13 +64,13 @@ What changes how you write the call:
   been confirmed. The bytes alone cannot distinguish Markdown from any other
   prose, so the `.md` extension is what lifts the stored type to
   `text/markdown`. Send the bare name and this all happens; there is no reason
-  to spell the extension out yourself, and no format other than `docx` exists,
-  so a producer lookup cannot fail for want of one.
+  to spell the extension out yourself.
 - `content` is capped at 1 MiB. Past that the call fails with both byte counts;
   split the document rather than truncating it.
-- The only producer option is `options: {"plain": true}`, and it is **not**
-  cosmetic — read [What the round trip does not preserve](#what-the-round-trip-does-not-preserve)
-  before you pass it.
+- The producer options are `{"plain": true}` and `{"theme": "<name>"}`. Read
+  [Themes](#themes) before you pass the second, and
+  [What the round trip does not preserve](#what-the-round-trip-does-not-preserve)
+  before you pass the first.
 - `prompt` is optional provenance: the brief the document was written from. Not
   the document body.
 
@@ -98,25 +98,31 @@ response already carries the card for the `.docx` it just rendered.
 The `href` is the session-authenticated route, so a click forces a download; use
 `media(action: "get_public_url")` when the user needs an external share link.
 
-## Why there is no word tool
+## Why there is no office tool
 
-There is no `word_document` tool, no `word` tool, and no
+There is no `office_document` tool, no `word_document` tool, and no
 `media(action: "convert")`. Do not go looking for one and do not synthesise a
 call shape for it. The capability is a *producer* behind `create_derivative`,
-which is exactly why a Word document is two calls and nothing else.
+which is exactly why a document is two calls and nothing else.
 
 ## Format identifiers
 
-`docx` is the only format this plugin registers and the only value to pass as
-`format`. Do not pass `word`, `md`, `doc`, or the full
+`docx`, `odt` and `rtf` are the formats this plugin renders, and the only
+values to pass as `format`. Do not pass `word`, `doc`, `pdf`, or the full
 `application/vnd.openxmlformats-officedocument.wordprocessingml.document` MIME
 type.
 
+| Format | What the user gets |
+| --- | --- |
+| `docx` | a Microsoft Word document — the default, and what to send unless there is a reason not to |
+| `odt` | an OpenDocument text file, for LibreOffice and Google Docs |
+| `rtf` | rich text, for a reader that takes nothing else |
+
 The render producer accepts Markdown parents only — the `text/markdown` MIME or
-the `md` / `markdown` extension, either of which is enough. A `docx` derivative's
-parent is therefore always a Markdown asset, never a PDF or an image, and a DOCX
-is never itself rendered into another DOCX. (Reading a `.docx` back is the
-*extract* producer's job, at `format: "md"`.)
+the `md` / `markdown` extension, either of which is enough. A document
+derivative's parent is therefore always a Markdown asset, never a PDF or an
+image, and a document is never itself rendered into another document. (Reading
+a `.docx` back is the *extract* producer's job, at `format: "md"`.)
 
 `md` is a format identifier this plugin registers too, in the other direction.
 Asking for `format: "md"` on a DOCX parent produces the extracted Markdown as a
@@ -140,7 +146,65 @@ Ask the archive rather than guess when you need to know what exists:
 ```
 
 A format identifier is capped at 16 characters by the `media_derivatives.format`
-column; `docx` uses four of them.
+column; `docx`, `odt` and `rtf` use four of them.
+
+## Themes
+
+A theme is the look a document is drawn in: its colours, its type scale, its
+heading styles. A document names one in its **frontmatter**, at the very top of
+the Markdown:
+
+```markdown
+---
+theme: corporate
+---
+
+# Q3 Report
+```
+
+**The theme names are two lists, and the media library's wins.**
+
+The ones that ship with the renderer, always available:
+
+| Theme | The look |
+| --- | --- |
+| `default` | the plain look — the safe answer |
+| `minimal` | less decoration than the default |
+| `corporate` | the house style, for a formal document |
+| `report` | a report: bigger headings, room for tables |
+
+And the ones the media library holds. A theme is a **folder** in the media
+library whose name is the theme's name; list them with
+
+```jsonc
+{ "action": "list_folders" }   // the media_folders tool: the principal's folders
+```
+
+**`list_folders` needs a core that carries the media-folders feature**
+(migration `0097`). On a core without it there is no `media_folders` tool to
+call and the media library holds no folders, so the built-in table above is
+the whole list of themes.
+
+A folder that holds a `theme.yml` is a theme. **A media theme shadows a
+built-in of the same name** — a folder called `corporate` is *that* corporate
+theme, not the one that ships with the renderer — so the list you fetched is
+the list to choose from. The folder's id resolves as well, so `theme:` may
+name either the folder's name or its id; the id does not change when the
+operator renames the folder, so prefer it when the user has pinned a theme.
+
+A theme name is a **folder name, not a path**. `theme: ../something` names no
+folder of yours and the render fails saying so. Do not try to reach a theme
+outside the folder the operator made.
+
+**A theme named in the call outranks the frontmatter.** `options: {"theme":
+"corporate"}` answers for the document: the frontmatter's `theme:` is not read
+at all. Use it when the caller has asked for a specific look; use the
+frontmatter when the document itself decides. A theme that does not exist fails
+the render with a message naming it — that is not a reason to retry with
+another name, it is a reason to list the folders again.
+
+A theme changes the *look* only. Nothing about the text changes, and a document
+in a theme carries no more information than the same document without one.
 
 ## What the round trip does not preserve
 
@@ -202,9 +266,14 @@ re-run step 2 rather than converting the DOCX forward.
 `![Chart](https://example.com/chart.png)` is not downloaded — the alt text is
 written into the document instead, and it comes back as the bare word `Chart`,
 not as an image reference. Any path that is not a readable local file degrades
-the same way, and in a server deployment nearly every path is not one. The
-plugin also configures no media directory, so a `.docx` you read back never
-writes images to disk.
+the same way, and in a server deployment nearly every path is not one.
+
+**A picture that is already inside the document comes back as an image
+reference to a file that was never written** — `![Chart](media/section_image1.png)`,
+the name being the one the document carries. The extraction writes no media
+directory, so nothing lands on disk and the reference points at nothing. The
+alt text is what tells you a picture was there; the picture itself is not in
+the Markdown.
 
 If the document needs a picture, say what the picture should show in the
 surrounding prose rather than relying on the image surviving. If the user needs
@@ -220,7 +289,7 @@ Expect a prompt before either returns.
 `asset_id`, no download card, no "here's your file" — a refused or expired
 approval means nothing was written. Wait for the response, then report what it
 returned. When a call is queued behind an approval, carry the pending
-description forward ("writing q3-report.docx, then rendering it to Word") so the
+description forward ("writing q3-report.md, then rendering it to Word") so the
 user can approve the right thing in the right order.
 
 ## Reading a document back
@@ -260,9 +329,12 @@ not be extracted rather than guessing at the contents.
 - `create_derivative` **is idempotent** on
   `(parent_id, format, producer_plugin, producer_operation)`. Re-calling it with
   the same parent and format returns the existing `derivative_id`, so it is a
-  safe retry and the URL the user bookmarked keeps working. It does **not**
-  rewrite the stored bytes, though — re-rendering never refreshes content, so
-  do not use it to pick up an edit to the parent.
+  safe retry and the URL the user bookmarked keeps working. **It does rewrite
+  the stored bytes**, though: the existing derivative is re-rendered and
+  replaced in place, and its `updated_at` moves. So a second call *does* pick up
+  an edit to the parent, and it *does* change the file the user already
+  downloaded — re-rendering the same parent in the same format is a way of
+  updating a document, not a way of leaving it alone.
 
 Producing a *different* document means a new `create_media` under a new
 filename — and therefore a new parent id and a new derivative row, because
@@ -280,5 +352,5 @@ disabled-operation error, the fix is the tool configuration, not the skill.
 
 Versions of the Markdown language the renderer supports, and the `plain` option's
 other effects, are documented by the underlying library at
-[fabeat/markdown-word](https://github.com/fabeat/markdown-word) (MIT;
-`phpoffice/phpword` underneath is LGPL-3.0).
+[markdown-office/markdown-word](https://github.com/markdown-office/markdown-word)
+(MIT; `phpoffice/phpword` underneath is LGPL-3.0).

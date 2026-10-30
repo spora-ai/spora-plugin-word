@@ -7,11 +7,12 @@ name: CI
 # This plugin has NO optional extension. Unlike spora-plugin-typst, where
 # ext-typst is a PECL install with `continue-on-error` and the producer's tests
 # skip themselves when it is absent, the four extensions below are hard
-# requirements of fabeat/markdown-word and the whole suite needs them. So:
-# every job installs all four explicitly, nothing is `continue-on-error`, and
-# no job passes `--ignore-platform-req` — a runner that lost `gd` should fail
-# in the first second with "the extension is missing", not 200 lines into a
-# test with a message that says nothing about the environment.
+# requirements of the two markdown-office packages and the whole suite needs
+# them. So: every job installs all four explicitly, nothing is
+# `continue-on-error`, and no job passes `--ignore-platform-req` — a runner that
+# lost `gd` should fail in the first second with "the extension is missing",
+# not 200 lines into a test with a message that says nothing about the
+# environment.
 #
 # Every job installs with `composer update spora-ai/spora-core
 # --with-all-dependencies`, not `composer install`. While composer.json carried
@@ -152,7 +153,7 @@ jobs:
   # Boot the plugin against a fresh spora-core install to verify the
   # plugin contract resolves cleanly: manifest parses, DI bindings
   # wire up, and all three media-archive registrations hook in. This
-  # catches breakage in the plugin's public surface (WordPlugin::
+  # catches breakage in the plugin's public surface (OfficePlugin::
   # onContainerBuilding / skillPaths) without spinning up the full
   # frontend stack — including the MediaMimeRefinerInterface guard,
   # whose failure mode is otherwise a swallowed listener exception and
@@ -186,7 +187,12 @@ jobs:
           composer config allow-plugins.pestphp/pest-plugin true
           composer config allow-plugins.spora-ai/installer true
           composer config allow-plugins.composer/installers true
-          composer config repositories.word path "$GITHUB_WORKSPACE"
+          # `markdown-presentation` patches PHPPresentation through this
+          # Composer plugin, and `allow-plugins` is a root-project setting:
+          # the skeleton is the root here, so the skeleton has to allow it.
+          # Without the entry the install aborts with Composer's own message.
+          composer config allow-plugins.cweagans/composer-patches true
+          composer config repositories.office path "$GITHUB_WORKSPACE"
 
       # No platform-requirement skip here either: the four extensions are
       # installed above, and a platform-requirement failure is exactly the
@@ -202,7 +208,7 @@ jobs:
           composer require --no-interaction \
             "spora-ai/spora-core:^0.30" \
             spora-ai/installer:^1.5 \
-            "spora-ai/spora-plugin-word:*@dev" 2>&1 | tail -30
+            "spora-ai/spora-plugin-office:*@dev" 2>&1 | tail -30
 
       - name: Migrate + boot CLI to surface plugin-load failures
         working-directory: /tmp/skeleton
@@ -243,16 +249,17 @@ jobs:
         run: |
           # The composer installer (spora-ai/installer, type:spora-plugin)
           # routes packages into plugins/<package-short-name>/ — i.e.
-          # `spora-plugin-word`, NOT `word`. The package short name is
+          # `spora-plugin-office`, NOT `office`. The package short name is
           # what PluginLoader scans, and `spora:install` having run
           # without fatal errors above is sufficient evidence the
           # manifest parsed, the entry-point class autoloaded, and
           # PluginLoader booted the plugin.
-          test -d plugins/spora-plugin-word || (echo "Plugin NOT routed to plugins/spora-plugin-word/" && exit 1)
-          test -f plugins/spora-plugin-word/plugin.json || (echo "plugin.json missing" && exit 1)
-          test -f plugins/spora-plugin-word/composer.json || (echo "composer.json missing" && exit 1)
-          test -f plugins/spora-plugin-word/skills/word-documents/SKILL.md || (echo "skill SKILL.md missing" && exit 1)
-          echo "Plugin routed to plugins/spora-plugin-word/, manifest + skill in place."
+          test -d plugins/spora-plugin-office || (echo "Plugin NOT routed to plugins/spora-plugin-office/" && exit 1)
+          test -f plugins/spora-plugin-office/plugin.json || (echo "plugin.json missing" && exit 1)
+          test -f plugins/spora-plugin-office/composer.json || (echo "composer.json missing" && exit 1)
+          test -f plugins/spora-plugin-office/skills/office-documents/SKILL.md || (echo "skill SKILL.md missing" && exit 1)
+          test -f plugins/spora-plugin-office/skills/office-presentations/SKILL.md || (echo "deck skill SKILL.md missing" && exit 1)
+          echo "Plugin routed to plugins/spora-plugin-office/, manifest + skills in place."
 
   sonarcloud:
     name: SonarCloud scan

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Tests\Support;
+namespace Spora\Plugins\Office\Tests\Support;
 
 use DI\ContainerBuilder;
 use Psr\Container\ContainerInterface;
@@ -12,9 +12,12 @@ use Spora\Core\Paths;
 use Spora\Core\SecurityManager;
 use Spora\Core\SecurityManagerInterface;
 use Spora\Models\MediaAsset;
-use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
-use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
-use Spora\Plugins\Word\Services\WordConversion;
+use Spora\Plugins\Office\Finder\MediaLibrarySource;
+use Spora\Plugins\Office\Producers\MarkdownToOfficeProducer;
+use Spora\Plugins\Office\Producers\MarkdownToPresentationProducer;
+use Spora\Plugins\Office\Producers\OfficeToMarkdownProducer;
+use Spora\Plugins\Office\Producers\PresentationToMarkdownProducer;
+use Spora\Plugins\Office\Services\OfficeConversion;
 use Spora\Services\AssetStore;
 use Spora\Services\AutoAssetStore;
 use Spora\Services\DatabaseAssetStore;
@@ -37,7 +40,7 @@ use Symfony\Component\HttpClient\MockHttpClient;
  * A **real** `DI\Container`, not mocks: `findProducer()` instantiates each producer
  * *through* it, which is what lets one take arguments. Fresh per call.
  */
-final class WordMediaArchive
+final class OfficeMediaArchive
 {
     /**
      * Payload ceiling above which `AutoAssetStore` routes to disk. Set
@@ -54,13 +57,15 @@ final class WordMediaArchive
      *        swallowing. The whole graph shares it — the ingest pipeline is
      *        the only component in these tests that logs.
      */
-    public static function container(?LoggerInterface $logger = null): ContainerInterface
+    public static function container(?LoggerInterface $logger = null, ?FakeMediaLibrary $library = null): ContainerInterface
     {
         // No `SPORA_STORAGE_DIR` override: `Paths` resolves `storage()`
         // under the base path it is given, so one temp root per container
         // keeps local-mode writes isolated without mutating process env
         // that other tests in this worker read.
-        $storageRoot = sys_get_temp_dir() . '/spora-word-archive-' . bin2hex(random_bytes(6));
+        $storageRoot = sys_get_temp_dir() . '/spora-office-archive-' . bin2hex(random_bytes(6));
+
+        $library ??= new FakeMediaLibrary();
 
         $builder = new ContainerBuilder();
         $builder->addDefinitions([
@@ -72,6 +77,12 @@ final class WordMediaArchive
                 static fn(): SecurityManagerInterface => new SecurityManager(random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES)),
             ),
             LoggerInterface::class => \DI\factory(static fn(): LoggerInterface => $logger ?? new NullLogger()),
+
+            // The media library the finder reads. The real one is core's
+            // tables; this one is in memory, so the suite does not need the
+            // folders table to exist.
+            MediaLibrarySource::class => \DI\factory(static fn(): MediaLibrarySource => $library),
+            FakeMediaLibrary::class => \DI\factory(static fn(): FakeMediaLibrary => $library),
 
             // `ffprobe` stays off and the fetcher is a mock: the URL branch
             // is not what these tests exercise, and an accidental fetch
@@ -118,14 +129,32 @@ final class WordMediaArchive
         return self::resolve($container, MediaDerivativeService::class);
     }
 
-    public static function producer(ContainerInterface $container): MarkdownToDocxProducer
+    public static function producer(ContainerInterface $container): MarkdownToOfficeProducer
     {
-        return self::resolve($container, MarkdownToDocxProducer::class);
+        return self::resolve($container, MarkdownToOfficeProducer::class);
     }
 
-    public static function extractor(ContainerInterface $container): DocxToMarkdownProducer
+    public static function extractor(ContainerInterface $container): OfficeToMarkdownProducer
     {
-        return self::resolve($container, DocxToMarkdownProducer::class);
+        return self::resolve($container, OfficeToMarkdownProducer::class);
+    }
+
+    public static function deckProducer(ContainerInterface $container): MarkdownToPresentationProducer
+    {
+        return self::resolve($container, MarkdownToPresentationProducer::class);
+    }
+
+    public static function deckExtractor(ContainerInterface $container): PresentationToMarkdownProducer
+    {
+        return self::resolve($container, PresentationToMarkdownProducer::class);
+    }
+
+    /**
+     * The media library the container's finder reads.
+     */
+    public static function library(ContainerInterface $container): FakeMediaLibrary
+    {
+        return self::resolve($container, FakeMediaLibrary::class);
     }
 
     /**
@@ -159,7 +188,7 @@ final class WordMediaArchive
     ): MediaAsset {
         return self::archiveService($container)->ingest(new MediaIngestRequest(
             bytes: $bytes,
-            mime: WordConversion::DOCX_MIME,
+            mime: OfficeConversion::DOCX_MIME,
             filename: $filename,
             uploadSource: 'upload',
         ));
@@ -172,9 +201,9 @@ final class WordMediaArchive
      * without a database round trip, and an 8 MiB payload is not something
      * to push through SQLite.
      */
-    public static function dataUrlAsset(string $markdown, string $filename = 'report.md'): MediaAsset
+    public static function dataUrlAsset(string $markdown, string $filename = 'report.md', ?int $principalId = null): MediaAsset
     {
-        return self::unsavedAsset('text/markdown', $markdown, $filename);
+        return self::unsavedAsset('text/markdown', $markdown, $filename, $principalId);
     }
 
     /**
@@ -182,7 +211,7 @@ final class WordMediaArchive
      */
     public static function docxAsset(string $docx, string $filename = 'report.docx'): MediaAsset
     {
-        return self::unsavedAsset(WordConversion::DOCX_MIME, $docx, $filename);
+        return self::unsavedAsset(OfficeConversion::DOCX_MIME, $docx, $filename);
     }
 
     /**
@@ -221,20 +250,21 @@ final class WordMediaArchive
         string $docx,
         string $filename = 'report.docx',
     ): array {
-        return self::localCopyOf($container, WordConversion::DOCX_MIME, $docx, $filename);
+        return self::localCopyOf($container, OfficeConversion::DOCX_MIME, $docx, $filename);
     }
 
-    private static function unsavedAsset(string $mime, string $bytes, string $filename): MediaAsset
+    private static function unsavedAsset(string $mime, string $bytes, string $filename, ?int $principalId = null): MediaAsset
     {
         $asset = new MediaAsset();
 
-        $asset->id           = 'word-parent-' . bin2hex(random_bytes(8));
+        $asset->id           = 'office-parent-' . bin2hex(random_bytes(8));
         $asset->mime_type    = $mime;
         $asset->media_type   = 'document';
         $asset->filename     = $filename;
         $asset->storage_mode = 'data_url';
         $asset->byte_size    = strlen($bytes);
         $asset->payload      = $bytes;
+        $asset->principal_id = $principalId;
 
         return $asset;
     }

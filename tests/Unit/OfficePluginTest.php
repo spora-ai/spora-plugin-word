@@ -9,12 +9,16 @@ use Spora\Core\SecurityManagerInterface;
 use Spora\Events\ContainerBuildingEvent;
 use Spora\Plugins\AbstractPlugin;
 use Spora\Plugins\Exceptions\PluginLoadFailedException;
-use Spora\Plugins\Word\Producers\DocxToMarkdownProducer;
-use Spora\Plugins\Word\Producers\MarkdownToDocxProducer;
-use Spora\Plugins\Word\Refiners\WordDocxMimeRefiner;
-use Spora\Plugins\Word\Services\WordConversion;
-use Spora\Plugins\Word\Services\WordSourceBytes;
-use Spora\Plugins\Word\WordPlugin;
+use Spora\Plugins\Office\Finder\EloquentMediaLibrarySource;
+use Spora\Plugins\Office\Finder\MediaLibrarySource;
+use Spora\Plugins\Office\OfficePlugin;
+use Spora\Plugins\Office\Producers\MarkdownToOfficeProducer;
+use Spora\Plugins\Office\Producers\MarkdownToPresentationProducer;
+use Spora\Plugins\Office\Producers\OfficeToMarkdownProducer;
+use Spora\Plugins\Office\Producers\PresentationToMarkdownProducer;
+use Spora\Plugins\Office\Refiners\OfficeMimeRefiner;
+use Spora\Plugins\Office\Services\OfficeConversion;
+use Spora\Plugins\Office\Services\OfficeSourceBytes;
 use Spora\Services\MediaArchive\MediaDerivativeProducerDiscovery;
 use Spora\Services\MediaArchive\MediaDerivativeProducerInterface;
 use Spora\Services\MediaArchive\MediaMimeRefinerDiscovery;
@@ -22,27 +26,31 @@ use Spora\Services\MediaArchive\MediaMimeRefinerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 it('subscribes to the container-building event with a public listener', function () {
-    $events   = WordPlugin::getSubscribedEvents();
+    $events   = OfficePlugin::getSubscribedEvents();
     $listener = $events[ContainerBuildingEvent::class];
 
-    expect(class_implements(WordPlugin::class))->toContain(EventSubscriberInterface::class)
-        ->and(get_parent_class(WordPlugin::class))->toBe(AbstractPlugin::class)
+    expect(class_implements(OfficePlugin::class))->toContain(EventSubscriberInterface::class)
+        ->and(get_parent_class(OfficePlugin::class))->toBe(AbstractPlugin::class)
         ->and($events)->toBe([ContainerBuildingEvent::class => 'onContainerBuilding']);
 
     // `PluginLoader` dispatches as `$plugin->$listener($event)`, so the
     // mapped name has to resolve to a public, single-argument method or the
     // listener silently never runs.
-    $method = new ReflectionMethod(WordPlugin::class, $listener);
+    $method = new ReflectionMethod(OfficePlugin::class, $listener);
     expect($method->isPublic())->toBeTrue()
         ->and($method->getNumberOfParameters())->toBe(1);
 });
 
-it('registers both producers and the refiner on boot', function () {
-    (new WordPlugin())->onContainerBuilding(new ContainerBuildingEvent(new ContainerBuilder()));
+it('registers every producer and the refiner on boot', function () {
+    (new OfficePlugin())->onContainerBuilding(new ContainerBuildingEvent(new ContainerBuilder()));
 
-    expect(MediaDerivativeProducerDiscovery::all())
-        ->toBe([MarkdownToDocxProducer::class, DocxToMarkdownProducer::class])
-        ->and(MediaMimeRefinerDiscovery::all())->toBe([WordDocxMimeRefiner::class]);
+    expect(MediaDerivativeProducerDiscovery::all())->toBe([
+        MarkdownToOfficeProducer::class,
+        OfficeToMarkdownProducer::class,
+        MarkdownToPresentationProducer::class,
+        PresentationToMarkdownProducer::class,
+    ])
+        ->and(MediaMimeRefinerDiscovery::all())->toBe([OfficeMimeRefiner::class]);
 });
 
 /**
@@ -50,7 +58,7 @@ it('registers both producers and the refiner on boot', function () {
  * `MediaConverterDiscovery::all()` is the class core's cut deletes.
  */
 it('never reaches for the converter discovery this plugin no longer uses', function () {
-    $method = new ReflectionMethod(WordPlugin::class, 'onContainerBuilding');
+    $method = new ReflectionMethod(OfficePlugin::class, 'onContainerBuilding');
     $source = implode("\n", array_slice(
         explode("\n", (string) file_get_contents((string) $method->getFileName())),
         $method->getStartLine() - 1,
@@ -59,11 +67,11 @@ it('never reaches for the converter discovery this plugin no longer uses', funct
 
     expect(interface_exists(MediaDerivativeProducerInterface::class))->toBeTrue()
         ->and($source)->toContain('MediaDerivativeProducerDiscovery::add(')
-        ->and(substr_count($source, 'MediaDerivativeProducerDiscovery::add('))->toBe(2)
+        ->and(substr_count($source, 'MediaDerivativeProducerDiscovery::add('))->toBe(4)
         ->and($source)->not->toContain('MediaConverter');
 });
 
-it('binds its five classes so the container can autowire them', function () {
+it('binds its classes so the container can autowire them', function () {
     $builder = new ContainerBuilder();
     // The two definitions core contributes around the producers'
     // `LocalAssetStore` collaborator. They are supplied here rather than
@@ -75,15 +83,18 @@ it('binds its five classes so the container can autowire them', function () {
             static fn(): SecurityManagerInterface => new SecurityManager(random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES)),
         ),
     ]);
-    (new WordPlugin())->onContainerBuilding(new ContainerBuildingEvent($builder));
+    (new OfficePlugin())->onContainerBuilding(new ContainerBuildingEvent($builder));
 
     $container = $builder->build();
 
-    expect($container->get(WordConversion::class))->toBeInstanceOf(WordConversion::class)
-        ->and($container->get(WordSourceBytes::class))->toBeInstanceOf(WordSourceBytes::class)
-        ->and($container->get(MarkdownToDocxProducer::class))->toBeInstanceOf(MarkdownToDocxProducer::class)
-        ->and($container->get(DocxToMarkdownProducer::class))->toBeInstanceOf(DocxToMarkdownProducer::class)
-        ->and($container->get(WordDocxMimeRefiner::class))->toBeInstanceOf(WordDocxMimeRefiner::class);
+    expect($container->get(OfficeConversion::class))->toBeInstanceOf(OfficeConversion::class)
+        ->and($container->get(OfficeSourceBytes::class))->toBeInstanceOf(OfficeSourceBytes::class)
+        ->and($container->get(MediaLibrarySource::class))->toBeInstanceOf(EloquentMediaLibrarySource::class)
+        ->and($container->get(MarkdownToOfficeProducer::class))->toBeInstanceOf(MarkdownToOfficeProducer::class)
+        ->and($container->get(OfficeToMarkdownProducer::class))->toBeInstanceOf(OfficeToMarkdownProducer::class)
+        ->and($container->get(MarkdownToPresentationProducer::class))->toBeInstanceOf(MarkdownToPresentationProducer::class)
+        ->and($container->get(PresentationToMarkdownProducer::class))->toBeInstanceOf(PresentationToMarkdownProducer::class)
+        ->and($container->get(OfficeMimeRefiner::class))->toBeInstanceOf(OfficeMimeRefiner::class);
 });
 
 /**
@@ -91,44 +102,65 @@ it('binds its five classes so the container can autowire them', function () {
  * process-global, so the listener has to be safe to run on every boot.
  */
 it('is idempotent across repeated boots', function () {
-    $plugin = new WordPlugin();
+    $plugin = new OfficePlugin();
     $event  = new ContainerBuildingEvent(new ContainerBuilder());
 
     $plugin->onContainerBuilding($event);
     $plugin->onContainerBuilding($event);
 
-    expect(MediaDerivativeProducerDiscovery::all())
-        ->toBe([MarkdownToDocxProducer::class, DocxToMarkdownProducer::class])
-        ->and(MediaMimeRefinerDiscovery::all())->toBe([WordDocxMimeRefiner::class]);
+    expect(MediaDerivativeProducerDiscovery::all())->toBe([
+        MarkdownToOfficeProducer::class,
+        OfficeToMarkdownProducer::class,
+        MarkdownToPresentationProducer::class,
+        PresentationToMarkdownProducer::class,
+    ])
+        ->and(MediaMimeRefinerDiscovery::all())->toBe([OfficeMimeRefiner::class]);
 });
 
-it('contributes no tools, no admin app and no schema', function () {
-    $plugin = new WordPlugin();
+it('contributes no tools and no admin app', function () {
+    $plugin = new OfficePlugin();
 
     // Decision: the plugin is pure capability. The LLM drives both
     // directions through core's existing `media` tool
     // (`create_media` → `create_derivative` to write, an upload to read), so
-    // a `word_document` tool would be a second spelling of what the
+    // an `office_document` tool would be a second spelling of what the
     // registries already expose.
     expect($plugin->tools())->toBe([])
         ->and($plugin->apps())->toBe([])
         ->and($plugin->agentTemplatePaths())->toBe([])
-        ->and($plugin->schemaVersion())->toBe(0)
-        ->and($plugin->migrationsPath())->toBeNull()
-        ->and($plugin->getName())->toBe('Word Documents');
+        ->and($plugin->getName())->toBe('Office Documents');
 });
 
-it('ships the word-documents skill from a directory that exists', function () {
-    $paths = (new WordPlugin())->skillPaths();
+it('declares the migration that rewrites the rows the rename touched', function () {
+    $plugin = new OfficePlugin();
+    $path   = $plugin->migrationsPath();
+
+    expect($plugin->schemaVersion())->toBe(1)
+        ->and(is_dir($path))->toBeTrue()
+        ->and(is_file($path . '/office_000001_rename_producer_identity.php'))->toBeTrue();
+
+    // `DatabaseSchemaInstaller::validateMigrationFilenames()` refuses a
+    // file that does not start with the plugin's slug and an underscore.
+    foreach (glob($path . '/*.php') ?: [] as $file) {
+        expect(basename($file, '.php'))->toStartWith('office_');
+    }
+});
+
+it('ships its skills from a directory that exists', function () {
+    $paths = (new OfficePlugin())->skillPaths();
 
     expect($paths)->toHaveCount(1)
         ->and(is_dir($paths[0]))->toBeTrue()
-        ->and(is_file($paths[0] . '/word-documents/SKILL.md'))->toBeTrue();
+        ->and(is_file($paths[0] . '/office-documents/SKILL.md'))->toBeTrue()
+        ->and(is_file($paths[0] . '/office-presentations/SKILL.md'))->toBeTrue();
 
     // `SkillValidator` rejects a frontmatter `name` that differs from the
     // parent directory, so the two must be renamed together.
-    $frontmatter = (string) file_get_contents($paths[0] . '/word-documents/SKILL.md');
-    expect($frontmatter)->toContain('name: word-documents');
+    $documents = (string) file_get_contents($paths[0] . '/office-documents/SKILL.md');
+    $decks     = (string) file_get_contents($paths[0] . '/office-presentations/SKILL.md');
+
+    expect($documents)->toContain('name: office-documents')
+        ->and($decks)->toContain('name: office-presentations');
 });
 
 /**
@@ -143,7 +175,7 @@ it('ships the word-documents skill from a directory that exists', function () {
  * line and a DOCX upload a 415 instead of a crash an operator would notice.
  */
 it('guards the boot against a core without the refiner seam', function () {
-    $method = new ReflectionMethod(WordPlugin::class, 'onContainerBuilding');
+    $method = new ReflectionMethod(OfficePlugin::class, 'onContainerBuilding');
     $source = implode("\n", array_slice(
         explode("\n", (string) file_get_contents((string) $method->getFileName())),
         $method->getStartLine() - 1,

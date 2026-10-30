@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Exceptions;
+namespace Spora\Plugins\Office\Exceptions;
 
 use InvalidArgumentException;
 
@@ -12,6 +12,6 @@ use InvalidArgumentException;
  * Extends the SPL {@see InvalidArgumentException} so a caller that already
  * catches the SPL base keeps working, while the dedicated subclass keeps
  * "bad request" distinguishable from "the engine failed"
- * ({@see WordDocumentException}).
+ * ({@see OfficeDocumentException}).
  */
-final class WordInvalidArgumentException extends InvalidArgumentException {}
+final class OfficeInvalidArgumentException extends InvalidArgumentException {}

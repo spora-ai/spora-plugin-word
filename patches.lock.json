@@ -1,0 +1,17 @@
+{
+    "_hash": "21d2593382d9f5b42f8429f9ca99cab31d071ccf7779527114f31ea3f5022f12",
+    "patches": {
+        "phpoffice/phppresentation": [
+            {
+                "package": "phpoffice/phppresentation",
+                "description": "PHPPresentation 1.2.0 brought up to upstream's master, with the fixes that give a picture the path, the bytes and the name it was read from, and that find the folder of a part of a package with the slashes of the package",
+                "url": "https://raw.githubusercontent.com/markdown-office/PHPPresentation/9aa3f4624f1cab54fc5d275397c2fc59cf6f276d/patches/phpoffice-phppresentation-1.2.0-to-master.patch",
+                "sha256": "0b8f7c150f7ba5d12671fb9e211c9f1a4db549d7609239f49c0cea707a190551",
+                "depth": 1,
+                "extra": {
+                    "provenance": "dependency:phpoffice/phppresentation"
+                }
+            }
+        ]
+    }
+}

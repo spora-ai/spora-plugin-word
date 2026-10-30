@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Spora\Plugins\Word\Tests\Support;
+namespace Spora\Plugins\Office\Tests\Support;
 
 use RuntimeException;
 
