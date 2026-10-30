@@ -270,7 +270,7 @@ the same way, and in a server deployment nearly every path is not one.
 
 **A picture that is already inside the document comes back as an image
 reference to a file that was never written** — `![Chart](media/section_image1.png)`,
-the name being the one Word gave the picture. The extraction writes no media
+the name being the one the document carries. The extraction writes no media
 directory, so nothing lands on disk and the reference points at nothing. The
 alt text is what tells you a picture was there; the picture itself is not in
 the Markdown.
